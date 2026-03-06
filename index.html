@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HomeBase Radio</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Oswald:wght@300;400;600;700&display=swap');
+  :root {
+    --olive:#4a5240;--olive-dark:#2e3328;--olive-light:#6b7560;
+    --amber:#f5a623;--amber-dim:#8a5d12;--red:#e8392a;--green:#52c41a;
+    --cream:#e8e0cc;--dark:#1a1c17;--metal:#3a3d35;--metal-light:#555950;
+    --screen-bg:#0d1208;--screen-green:#39ff14;--screen-dim:#1a4a08;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    background:var(--dark);min-height:100vh;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;font-family:'Oswald',sans-serif;
+    background-image:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.15) 2px,rgba(0,0,0,.15) 4px),
+      repeating-linear-gradient(90deg,transparent,transparent 2px,rgba(0,0,0,.05) 2px,rgba(0,0,0,.05) 4px);
+    padding:20px;
+  }
+  .app-title{color:var(--cream);font-size:13px;letter-spacing:8px;text-transform:uppercase;margin-bottom:24px;opacity:.5;font-weight:300;}
+  .radio-body{
+    background:linear-gradient(160deg,var(--olive) 0%,var(--olive-dark) 100%);
+    border-radius:18px 18px 28px 28px;width:320px;
+    box-shadow:0 0 0 2px var(--olive-light),0 0 0 4px var(--olive-dark),0 20px 60px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.1);
+    position:relative;overflow:hidden;
+  }
+  .radio-top-strip{height:8px;border-radius:18px 18px 0 0;background:linear-gradient(90deg,#2a2d25,#4a4d43,#2a2d25);}
+  .radio-header{padding:16px 24px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(0,0,0,.3);}
+  .brand{font-size:20px;font-weight:700;letter-spacing:3px;color:var(--cream);text-shadow:0 1px 3px rgba(0,0,0,.5);}
+  .brand span{color:var(--amber);}
+  .indicator-row{display:flex;gap:8px;align-items:center;}
+  .indicator{width:10px;height:10px;border-radius:50%;background:#2a2d25;border:1px solid rgba(0,0,0,.4);box-shadow:inset 0 1px 2px rgba(0,0,0,.5);transition:all .2s;}
+  .indicator.power{background:var(--green);box-shadow:0 0 6px var(--green),inset 0 1px 2px rgba(255,255,255,.2);}
+  .indicator.tx.active{background:var(--red);box-shadow:0 0 8px var(--red);}
+  .indicator.rx.active{background:var(--amber);box-shadow:0 0 8px var(--amber);}
+  .screen-section{
+    margin:12px 20px;background:var(--screen-bg);border-radius:8px;
+    border:2px solid #0a0e06;box-shadow:inset 0 0 20px rgba(0,0,0,.8);
+    padding:12px 14px;min-height:90px;font-family:'Share Tech Mono',monospace;position:relative;overflow:hidden;
+  }
+  .screen-section::before{
+    content:'';position:absolute;inset:0;
+    background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.15) 3px,rgba(0,0,0,.15) 4px);
+    pointer-events:none;z-index:10;
+  }
+  .channel-display{display:flex;align-items:baseline;gap:6px;margin-bottom:4px;}
+  .channel-label{font-size:10px;color:var(--screen-dim);letter-spacing:2px;}
+  .channel-num{font-size:28px;color:var(--screen-green);line-height:1;text-shadow:0 0 10px rgba(57,255,20,.5);}
+  .status-text{font-size:10px;color:var(--screen-dim);letter-spacing:1px;margin-top:4px;height:14px;overflow:hidden;}
+  .status-text.active-status{color:var(--screen-green);animation:blink 1s infinite;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+  .signal-bars{display:flex;gap:2px;align-items:flex-end;position:absolute;right:14px;top:12px;}
+  .bar{width:4px;background:var(--screen-dim);border-radius:1px;transition:background .3s;}
+  .bar:nth-child(1){height:6px}.bar:nth-child(2){height:10px}.bar:nth-child(3){height:14px}.bar:nth-child(4){height:18px}.bar:nth-child(5){height:22px;}
+  .bar.lit{background:var(--screen-green);box-shadow:0 0 4px rgba(57,255,20,.6);}
+  .audio-viz{height:20px;display:flex;align-items:center;gap:2px;margin-top:6px;}
+  .viz-bar{flex:1;background:var(--screen-dim);border-radius:1px;height:3px;transition:height .08s;}
+  .viz-bar.active{background:var(--screen-green);}
+  .screen-line-mid{color:#2a8a08;font-size:11px;letter-spacing:1px;font-family:'Share Tech Mono',monospace;}
+  .speaker-grille{margin:0 20px 14px;background:var(--metal);border-radius:6px;padding:10px;border:1px solid rgba(0,0,0,.4);box-shadow:inset 0 2px 4px rgba(0,0,0,.5);}
+  .grille-holes{display:grid;grid-template-columns:repeat(20,1fr);gap:3px;}
+  .hole{width:100%;aspect-ratio:1;border-radius:50%;background:var(--olive-dark);box-shadow:inset 0 1px 2px rgba(0,0,0,.8);transition:background .05s;}
+  .hole.active{background:var(--amber-dim);}
+  .controls{padding:0 20px 20px;display:flex;flex-direction:column;gap:14px;}
+  .connect-row{display:flex;gap:10px;align-items:stretch;}
+  .room-input{
+    flex:1;background:var(--olive-dark);border:1px solid rgba(0,0,0,.5);border-radius:6px;
+    color:var(--screen-green);font-family:'Share Tech Mono',monospace;font-size:14px;
+    padding:8px 12px;letter-spacing:2px;text-transform:uppercase;outline:none;
+    box-shadow:inset 0 2px 4px rgba(0,0,0,.5);
+  }
+  .room-input::placeholder{color:var(--screen-dim);}
+  .room-input:focus{border-color:var(--amber-dim);}
+  .connect-btn{
+    background:linear-gradient(160deg,var(--metal-light),var(--metal));border:1px solid rgba(0,0,0,.5);
+    border-radius:6px;color:var(--cream);font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;
+    letter-spacing:2px;padding:8px 14px;cursor:pointer;box-shadow:0 3px 0 rgba(0,0,0,.5);
+    transition:all .15s;text-transform:uppercase;white-space:nowrap;user-select:none;
+  }
+  .connect-btn:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.5);}
+  .connect-btn.connected{color:var(--red);}
+  .knob-row{display:flex;gap:8px;align-items:center;}
+  .ch-buttons{display:flex;gap:5px;flex:2;}
+  .ch-btn{
+    flex:1;background:var(--metal);border:1px solid rgba(0,0,0,.5);border-radius:4px;
+    color:var(--cream);font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;
+    letter-spacing:1px;padding:6px 0;cursor:pointer;
+    box-shadow:0 3px 0 rgba(0,0,0,.4);transition:all .1s;user-select:none;
+  }
+  .ch-btn:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.4);}
+  .ch-btn.active{background:var(--amber-dim);color:var(--amber);}
+  .vol-wrapper{display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;}
+  .knob-label{font-size:9px;letter-spacing:2px;color:var(--cream);opacity:.5;text-transform:uppercase;}
+  input[type=range].vol-slider{
+    -webkit-appearance:none;width:100%;height:4px;background:var(--metal);border-radius:2px;outline:none;
+    border:1px solid rgba(0,0,0,.4);box-shadow:inset 0 1px 3px rgba(0,0,0,.5);cursor:pointer;
+  }
+  input[type=range].vol-slider::-webkit-slider-thumb{
+    -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:radial-gradient(circle at 40% 35%,var(--metal-light),var(--olive-dark));
+    border:1px solid rgba(0,0,0,.5);box-shadow:0 2px 4px rgba(0,0,0,.6);cursor:pointer;
+  }
+  /* FX toggles */
+  .fx-row{display:flex;gap:6px;}
+  .fx-toggle{
+    flex:1;background:var(--metal);border:1px solid rgba(0,0,0,.4);border-radius:4px;
+    color:var(--cream);font-family:'Share Tech Mono',monospace;font-size:9px;
+    letter-spacing:1px;padding:5px 4px;cursor:pointer;opacity:.45;transition:all .2s;
+    user-select:none;text-align:center;
+  }
+  .fx-toggle.on{opacity:1;color:var(--amber);border-color:var(--amber-dim);box-shadow:0 0 5px rgba(245,166,35,.15);}
+  /* PTT */
+  .ptt-section{display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .ptt-label{font-size:10px;letter-spacing:3px;color:var(--cream);opacity:.4;}
+  .ptt-btn{
+    width:100%;height:70px;background:linear-gradient(160deg,#8a3020,var(--red));border:none;border-radius:10px;
+    cursor:pointer;font-family:'Oswald',sans-serif;font-size:18px;font-weight:700;letter-spacing:4px;
+    color:rgba(255,255,255,.9);text-transform:uppercase;
+    box-shadow:0 6px 0 #6a1a10,0 8px 20px rgba(0,0,0,.5),0 0 30px rgba(232,57,42,.2);
+    transition:all .08s;position:relative;overflow:hidden;user-select:none;touch-action:none;
+  }
+  .ptt-btn::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.15) 0%,transparent 50%);border-radius:10px;}
+  .ptt-btn:disabled{background:linear-gradient(160deg,#3a3d35,#2a2d25);box-shadow:0 4px 0 #1a1c17;cursor:not-allowed;opacity:.6;}
+  .ptt-btn.transmitting{
+    background:linear-gradient(160deg,#c03020,#ff5540);
+    box-shadow:0 3px 0 #8a1a10,0 0 40px rgba(255,85,64,.5);transform:translateY(3px);
+  }
+  .ptt-btn .ptt-icon{display:block;font-size:22px;margin-bottom:2px;}
+  .ptt-hint{font-size:9px;letter-spacing:1px;color:var(--cream);opacity:.3;}
+  .radio-bottom{background:linear-gradient(90deg,#1a1c17,#2a2d25,#1a1c17);height:12px;border-radius:0 0 28px 28px;}
+  .log-panel{
+    width:320px;margin-top:16px;background:rgba(0,0,0,.4);border-radius:8px;
+    border:1px solid rgba(57,255,20,.08);padding:10px 14px;max-height:100px;overflow-y:auto;
+    font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--screen-dim);scrollbar-width:none;
+  }
+  .log-panel::-webkit-scrollbar{display:none;}
+  .log-entry{line-height:1.8;}
+  .log-entry.info{color:#2a8a08;}.log-entry.success{color:var(--screen-green);}
+  .log-entry.warn{color:var(--amber-dim);}.log-entry.tx{color:var(--red);opacity:.8;}
+</style>
+</head>
+<body>
+<div class="app-title">HomeBase Radio — P2P Voice</div>
+<div class="radio-body">
+  <div class="radio-top-strip"></div>
+  <div class="radio-header">
+    <div class="brand">HOME<span>BASE</span></div>
+    <div class="indicator-row">
+      <div class="indicator power"></div>
+      <div class="indicator tx" id="txLed"></div>
+      <div class="indicator rx" id="rxLed"></div>
+    </div>
+  </div>
+  <div class="screen-section">
+    <div class="signal-bars">
+      <div class="bar" id="b1"></div><div class="bar" id="b2"></div>
+      <div class="bar" id="b3"></div><div class="bar" id="b4"></div><div class="bar" id="b5"></div>
+    </div>
+    <div class="channel-display">
+      <span class="channel-label">CH</span>
+      <span class="channel-num" id="chDisplay">01</span>
+    </div>
+    <div class="screen-line-mid" id="roomLabel">NO ROOM</div>
+    <div class="status-text" id="statusText">STANDBY</div>
+    <div class="audio-viz" id="audioViz"></div>
+  </div>
+  <div class="speaker-grille"><div class="grille-holes" id="grille"></div></div>
+  <div class="controls">
+    <div class="connect-row">
+      <input class="room-input" id="roomInput" type="text" maxlength="8" placeholder="ROOM ID" />
+      <button class="connect-btn" id="connectBtn">JOIN</button>
+    </div>
+    <div class="knob-row">
+      <div class="ch-buttons">
+        <button class="ch-btn active" data-ch="1" onclick="setChannel(this)">01</button>
+        <button class="ch-btn" data-ch="2" onclick="setChannel(this)">02</button>
+        <button class="ch-btn" data-ch="3" onclick="setChannel(this)">03</button>
+        <button class="ch-btn" data-ch="4" onclick="setChannel(this)">04</button>
+      </div>
+      <div class="vol-wrapper">
+        <div class="knob-label">VOL</div>
+        <input type="range" class="vol-slider" id="volSlider" min="0" max="100" value="80" />
+      </div>
+    </div>
+    <div class="fx-row">
+      <button class="fx-toggle on" id="fxNoise">📻 STATIC</button>
+      <button class="fx-toggle on" id="fxRadio">🎚 RADIO FX</button>
+      <button class="fx-toggle on" id="fxBeep">🔔 PTT BEEP</button>
+    </div>
+    <div class="ptt-section">
+      <div class="ptt-label">Push to Talk</div>
+      <button class="ptt-btn" id="pttBtn" disabled>
+        <span class="ptt-icon">📡</span>TRANSMIT
+      </button>
+      <div class="ptt-hint">HOLD · SPACEBAR · RELEASE TO LISTEN</div>
+    </div>
+  </div>
+  <div class="radio-bottom"></div>
+</div>
+<div class="log-panel" id="logPanel"></div>
+
+<script>
+// ── Build grille + viz ──────────────────────────────────────────────────────
+const grille = document.getElementById('grille');
+for (let i = 0; i < 80; i++) {
+  const h = document.createElement('div'); h.className='hole'; h.id='h'+i; grille.appendChild(h);
+}
+const vizContainer = document.getElementById('audioViz');
+const vizBars = [];
+for (let i = 0; i < 20; i++) {
+  const b = document.createElement('div'); b.className='viz-bar'; vizContainer.appendChild(b); vizBars.push(b);
+}
+
+// ── State ───────────────────────────────────────────────────────────────────
+let localStream=null, rawMicStream=null, bcPeers={}, bc=null;
+let myId=null, roomId=null, channel=1, isTx=false;
+let audioCtx=null, analyser=null, vizAnimId=null;
+let noiseNode=null, noiseGain=null;
+let fxNoise=true, fxRadio=true, fxBeep=true;
+let peerRxNodes={};
+
+const pttBtn=document.getElementById('pttBtn');
+const connectBtn=document.getElementById('connectBtn');
+const roomInput=document.getElementById('roomInput');
+const chDisplay=document.getElementById('chDisplay');
+const statusText=document.getElementById('statusText');
+const roomLabel=document.getElementById('roomLabel');
+const txLed=document.getElementById('txLed');
+const rxLed=document.getElementById('rxLed');
+const volSlider=document.getElementById('volSlider');
+
+// FX toggles
+document.getElementById('fxNoise').addEventListener('click', function(){
+  fxNoise=!fxNoise; this.classList.toggle('on',fxNoise);
+  if(noiseGain && audioCtx) noiseGain.gain.setTargetAtTime(fxNoise?0.03:0, audioCtx.currentTime, 0.1);
+});
+document.getElementById('fxRadio').addEventListener('click', function(){
+  fxRadio=!fxRadio; this.classList.toggle('on',fxRadio);
+  log('Radio FX '+(fxRadio?'ON':'OFF'),'info');
+});
+document.getElementById('fxBeep').addEventListener('click', function(){
+  fxBeep=!fxBeep; this.classList.toggle('on',fxBeep);
+});
+
+// ── Logging ──────────────────────────────────────────────────────────────────
+function log(msg,type='info'){
+  const p=document.getElementById('logPanel');
+  const ts=new Date().toTimeString().slice(0,8);
+  const el=document.createElement('div'); el.className='log-entry '+type;
+  el.textContent=`[${ts}] ${msg}`; p.appendChild(el); p.scrollTop=p.scrollHeight;
+  while(p.children.length>50) p.removeChild(p.firstChild);
+}
+
+// ── Audio context ─────────────────────────────────────────────────────────────
+function ensureCtx(){
+  if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// ── PTT click/beep sounds ──────────────────────────────────────────────────────
+function playClick(when, amp=0.5){
+  const ctx=ensureCtx();
+  const len=Math.floor(ctx.sampleRate*0.018);
+  const buf=ctx.createBuffer(1,len,ctx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(len*0.25))*amp;
+  const s=ctx.createBufferSource(); s.buffer=buf; s.connect(ctx.destination); s.start(when);
+}
+
+function playTone(when, freq, dur, amp=0.2, freqEnd=null){
+  const ctx=ensureCtx();
+  const osc=ctx.createOscillator(), g=ctx.createGain();
+  osc.connect(g); g.connect(ctx.destination);
+  osc.type='sine'; osc.frequency.setValueAtTime(freq,when);
+  if(freqEnd) osc.frequency.linearRampToValueAtTime(freqEnd, when+dur);
+  g.gain.setValueAtTime(0,when);
+  g.gain.linearRampToValueAtTime(amp, when+0.015);
+  g.gain.linearRampToValueAtTime(0, when+dur);
+  osc.start(when); osc.stop(when+dur+0.01);
+}
+
+function playPttStart(){
+  if(!fxBeep) return;
+  const ctx=ensureCtx(); const t=ctx.currentTime;
+  playClick(t, 0.7);
+  playClick(t+0.05, 0.4);
+  playTone(t+0.07, 900, 0.09, 0.22, 1300);
+}
+
+function playPttEnd(){
+  if(!fxBeep) return;
+  const ctx=ensureCtx(); const t=ctx.currentTime;
+  playClick(t, 0.5);
+  playTone(t+0.03, 1100, 0.09, 0.18, 700);
+}
+
+// ── Background static ─────────────────────────────────────────────────────────
+function startStatic(){
+  const ctx=ensureCtx();
+  const len=ctx.sampleRate*2;
+  const buf=ctx.createBuffer(1,len,ctx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+  noiseNode=ctx.createBufferSource(); noiseNode.buffer=buf; noiseNode.loop=true;
+  const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1000; hp.Q.value=0.4;
+  const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=4000; lp.Q.value=0.4;
+  noiseGain=ctx.createGain(); noiseGain.gain.value=fxNoise?0.03:0;
+  noiseNode.connect(hp); hp.connect(lp); lp.connect(noiseGain); noiseGain.connect(ctx.destination);
+  noiseNode.start();
+}
+
+function stopStatic(){
+  try{ if(noiseNode) noiseNode.stop(); }catch(e){}
+  noiseNode=null; noiseGain=null;
+}
+
+// ── Distortion curve ──────────────────────────────────────────────────────────
+function distCurve(amount){
+  const n=256, c=new Float32Array(n);
+  for(let i=0;i<n;i++){ const x=(i*2)/n-1; c[i]=((Math.PI+amount)*x)/(Math.PI+amount*Math.abs(x)); }
+  return c;
+}
+
+// ── Build TX chain: mic → radio processing → MediaStream ─────────────────────
+function buildTxChain(micStream){
+  const ctx=ensureCtx();
+  const src=ctx.createMediaStreamSource(micStream);
+  const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=300; hp.Q.value=0.5;
+  const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1700; bp.Q.value=0.65;
+  const ws=ctx.createWaveShaper(); ws.curve=distCurve(55); ws.oversample='4x';
+  const comp=ctx.createDynamicsCompressor();
+  comp.threshold.value=-22; comp.knee.value=4; comp.ratio.value=18; comp.attack.value=0.001; comp.release.value=0.04;
+  const gain=ctx.createGain(); gain.gain.value=1.5;
+  const dest=ctx.createMediaStreamDestination();
+  if(fxRadio){ src.connect(hp); hp.connect(bp); bp.connect(ws); ws.connect(comp); comp.connect(gain); gain.connect(dest); }
+  else { src.connect(dest); }
+  return dest.stream;
+}
+
+// ── Apply RX radio processing to incoming peer audio ─────────────────────────
+function applyRxFx(stream, peerId){
+  const ctx=ensureCtx();
+  const src=ctx.createMediaStreamSource(stream);
+  const vol=ctx.createGain(); vol.gain.value=volSlider.value/100;
+  if(fxRadio){
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=300; hp.Q.value=0.5;
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1700; bp.Q.value=0.65;
+    const ws=ctx.createWaveShaper(); ws.curve=distCurve(40); ws.oversample='4x';
+    const comp=ctx.createDynamicsCompressor();
+    comp.threshold.value=-18; comp.knee.value=6; comp.ratio.value=14; comp.attack.value=0.001; comp.release.value=0.06;
+    src.connect(hp); hp.connect(bp); bp.connect(ws); ws.connect(comp); comp.connect(vol);
+  } else {
+    src.connect(vol);
+  }
+  vol.connect(ctx.destination);
+  peerRxNodes[peerId]={vol};
+}
+
+// ── Signal bars ───────────────────────────────────────────────────────────────
+let sig=0;
+function updateSignal(s){ sig=s; for(let i=1;i<=5;i++) document.getElementById('b'+i).classList.toggle('lit',i<=s); }
+setInterval(()=>{ if(bc) updateSignal(Math.max(1,Math.min(5,sig+(Math.random()<.5?1:-1)))); },2200);
+
+// ── Grille anim ──────────────────────────────────────────────────────────────
+let grillT=null;
+function startGrille(){ grillT=setInterval(()=>{ document.querySelectorAll('.hole').forEach(h=>h.classList.remove('active')); for(let i=0;i<Math.floor(Math.random()*16);i++) document.getElementById('h'+Math.floor(Math.random()*80))?.classList.add('active'); },70); }
+function stopGrille(){ clearInterval(grillT); document.querySelectorAll('.hole').forEach(h=>h.classList.remove('active')); }
+
+// ── Viz ──────────────────────────────────────────────────────────────────────
+function startViz(stream){
+  const ctx=ensureCtx();
+  analyser=ctx.createAnalyser(); analyser.fftSize=64;
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  const arr=new Uint8Array(analyser.frequencyBinCount);
+  function draw(){ vizAnimId=requestAnimationFrame(draw); analyser.getByteFrequencyData(arr); vizBars.forEach((b,i)=>{ const v=(arr[i]||0)/255; b.style.height=Math.max(3,v*20)+'px'; b.classList.toggle('active',v>.1); }); } draw();
+}
+function stopViz(){ if(vizAnimId)cancelAnimationFrame(vizAnimId); vizBars.forEach(b=>{b.style.height='3px';b.classList.remove('active');}); }
+
+// ── Channel ──────────────────────────────────────────────────────────────────
+function setChannel(btn){
+  document.querySelectorAll('.ch-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); channel=parseInt(btn.dataset.ch);
+  chDisplay.textContent=channel.toString().padStart(2,'0');
+  log('Channel '+channel,'info');
+}
+
+// ── Volume ────────────────────────────────────────────────────────────────────
+volSlider.addEventListener('input',()=>{ const v=volSlider.value/100; Object.values(peerRxNodes).forEach(n=>{if(n.vol)n.vol.gain.value=v;}); });
+
+// ── WebRTC ────────────────────────────────────────────────────────────────────
+const STUN={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
+
+function joinRoom(room){
+  roomId=room.toUpperCase(); roomLabel.textContent=roomId;
+  bc=new BroadcastChannel('homebase-'+roomId+'-ch'+channel);
+  myId='u-'+Math.random().toString(36).slice(2,8);
+  log(`Room ${roomId} ch${channel} · ${myId}`,'success');
+  setStatus('ONLINE · LISTENING'); updateSignal(4);
+  startStatic();
+  bc.onmessage=async(evt)=>{
+    const m=JSON.parse(evt.data); if(m.from===myId) return;
+    if(m.type==='announce'&&!bcPeers[m.from]){ log('Peer '+m.from+' joined','info'); await initPeer(m.from,true); }
+    else if(m.type==='offer'&&m.to===myId) await handleOffer(m.from,m.sdp);
+    else if(m.type==='answer'&&m.to===myId) await handleAnswer(m.from,m.sdp);
+    else if(m.type==='ice'&&m.to===myId) await handleIce(m.from,m.candidate);
+    else if(m.type==='ptt-start'&&m.from!==myId){
+      rxLed.classList.add('active'); startGrille(); setStatus('RX · '+m.from);
+      playPttStart();
+      if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(0.07,audioCtx.currentTime,0.04);
+    }
+    else if(m.type==='ptt-stop'&&m.from!==myId){
+      rxLed.classList.remove('active'); stopGrille(); setStatus('ONLINE · LISTENING');
+      playPttEnd();
+      if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(0.03,audioCtx.currentTime,0.25);
+    }
+  };
+  bcSend({type:'announce'});
+}
+
+function bcSend(m){ if(bc) bc.postMessage(JSON.stringify({...m,from:myId})); }
+
+async function initPeer(pid,init){
+  const pc=new RTCPeerConnection(STUN); bcPeers[pid]=pc;
+  if(localStream) localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+  pc.ontrack=(e)=>{ log('Audio from '+pid,'success'); applyRxFx(e.streams[0],pid); };
+  pc.onicecandidate=(e)=>{ if(e.candidate) bcSend({type:'ice',to:pid,candidate:e.candidate}); };
+  pc.onconnectionstatechange=()=>{
+    log(pid+': '+pc.connectionState,'info');
+    if(pc.connectionState==='connected') updateSignal(5);
+    if(pc.connectionState==='disconnected'||pc.connectionState==='failed'){ delete bcPeers[pid]; delete peerRxNodes[pid]; updateSignal(3); }
+  };
+  if(init){ const o=await pc.createOffer({offerToReceiveAudio:true}); await pc.setLocalDescription(o); bcSend({type:'offer',to:pid,sdp:pc.localDescription}); }
+}
+async function handleOffer(pid,sdp){ if(!bcPeers[pid]) await initPeer(pid,false); const pc=bcPeers[pid]; await pc.setRemoteDescription(new RTCSessionDescription(sdp)); const a=await pc.createAnswer(); await pc.setLocalDescription(a); bcSend({type:'answer',to:pid,sdp:pc.localDescription}); }
+async function handleAnswer(pid,sdp){ const pc=bcPeers[pid]; if(pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp)); }
+async function handleIce(pid,c){ const pc=bcPeers[pid]; if(pc&&c) try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(e){} }
+
+// ── PTT ───────────────────────────────────────────────────────────────────────
+async function startTx(){
+  if(!roomId){log('Join a room first!','warn');return;}
+  if(isTx) return; isTx=true; ensureCtx();
+  if(!rawMicStream){
+    try{
+      rawMicStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,sampleRate:48000},video:false});
+      localStream=buildTxChain(rawMicStream);
+      Object.entries(bcPeers).forEach(([pid,pc])=>{ localStream.getTracks().forEach(t=>{ if(!pc.getSenders().find(s=>s.track===t)) pc.addTrack(t,localStream); }); });
+      startViz(rawMicStream); log('Mic + radio FX active','success');
+    }catch(e){log('Mic error: '+e.message,'warn');isTx=false;return;}
+  }
+  localStream.getAudioTracks().forEach(t=>t.enabled=true);
+  playPttStart();
+  if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(0.05,audioCtx.currentTime,0.03);
+  pttBtn.classList.add('transmitting');
+  pttBtn.innerHTML='<span class="ptt-icon">🔴</span>TRANSMITTING...';
+  txLed.classList.add('active'); setStatus('TRANSMITTING...'); startGrille();
+  bcSend({type:'ptt-start'}); log('PTT TX start','tx');
+}
+
+function stopTx(){
+  if(!isTx) return; isTx=false;
+  if(localStream) localStream.getAudioTracks().forEach(t=>t.enabled=false);
+  playPttEnd();
+  if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(0.03,audioCtx.currentTime,0.2);
+  pttBtn.classList.remove('transmitting');
+  pttBtn.innerHTML='<span class="ptt-icon">📡</span>TRANSMIT';
+  txLed.classList.remove('active'); setStatus('ONLINE · LISTENING'); stopGrille();
+  bcSend({type:'ptt-stop'}); log('PTT TX end','tx');
+}
+
+pttBtn.addEventListener('mousedown',startTx);
+pttBtn.addEventListener('mouseup',stopTx);
+pttBtn.addEventListener('mouseleave',stopTx);
+pttBtn.addEventListener('touchstart',e=>{e.preventDefault();startTx();},{passive:false});
+pttBtn.addEventListener('touchend',e=>{e.preventDefault();stopTx();},{passive:false});
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&roomId){e.preventDefault();startTx();}});
+document.addEventListener('keyup',e=>{if(e.code==='Space'){e.preventDefault();stopTx();}});
+
+// ── Connect ───────────────────────────────────────────────────────────────────
+connectBtn.addEventListener('click',async()=>{
+  if(roomId){
+    if(bc){bc.close();bc=null;}
+    Object.values(bcPeers).forEach(pc=>pc.close()); bcPeers={}; peerRxNodes={};
+    if(rawMicStream){rawMicStream.getTracks().forEach(t=>t.stop());rawMicStream=null;}
+    localStream=null; stopViz(); stopStatic();
+    roomId=null; roomLabel.textContent='NO ROOM'; pttBtn.disabled=true;
+    connectBtn.textContent='JOIN'; connectBtn.classList.remove('connected');
+    setStatus('STANDBY'); updateSignal(0); log('Disconnected','warn'); return;
+  }
+  const room=roomInput.value.trim(); if(!room){roomInput.focus();log('Enter room ID','warn');return;}
+  ensureCtx();
+  try{
+    rawMicStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
+    localStream=buildTxChain(rawMicStream);
+    localStream.getAudioTracks().forEach(t=>t.enabled=false);
+    startViz(rawMicStream);
+  }catch(e){log('Mic denied: '+e.message,'warn');return;}
+  joinRoom(room);
+  pttBtn.disabled=false; connectBtn.textContent='LEAVE'; connectBtn.classList.add('connected');
+});
+roomInput.addEventListener('keydown',e=>{if(e.key==='Enter')connectBtn.click();});
+
+function setStatus(msg){
+  statusText.textContent=msg;
+  statusText.className='status-text'+(msg!=='STANDBY'&&msg!=='NO ROOM'?' active-status':'');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+updateSignal(0);
+log('HomeBase Radio — realistic radio audio engine ready!','success');
+log('Enter a Room ID → JOIN → hold TRANSMIT to talk','info');
+log('Same room in another tab/device connects via WebRTC','info');
+</script>
+</body>
+</html>
