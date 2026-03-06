@@ -490,10 +490,10 @@ micMuteBtn.addEventListener('click', ()=>{
   micMuteBtn.classList.toggle('muted', micMuted);
   micMuteLabel.textContent = micMuted ? 'MIC OFF' : 'MIC ON';
   micFlag.classList.toggle('show', micMuted);
-  // If currently transmitting and mic is muted, stop TX
+  // If transmitting and muted, close TX gate and stop TX
   if(micMuted && isTx) stopTx();
-  // Mute/unmute the raw mic track directly
-  if(rawMicStream) rawMicStream.getAudioTracks().forEach(t => t.enabled = !micMuted);
+  // Silence the TX gain gate when muted (even if PTT held)
+  if(txGainNode && audioCtx) txGainNode.gain.setTargetAtTime(micMuted ? 0 : (isTx ? 1 : 0), audioCtx.currentTime, 0.01);
   log(micMuted ? 'Mic muted 🎤' : 'Mic unmuted 🎤', 'warn');
 });
 
@@ -502,10 +502,11 @@ spkMuteBtn.addEventListener('click', ()=>{
   spkMuteBtn.classList.toggle('muted', spkMuted);
   spkMuteLabel.textContent = spkMuted ? 'SPK OFF' : 'SPK ON';
   spkFlag.classList.toggle('show', spkMuted);
-  // Mute/unmute all incoming peer audio
   const vol = spkMuted ? 0 : volSlider.value / 100;
-  Object.values(peerRxNodes).forEach(n => { if(n.vol) n.vol.gain.value = vol; });
-  if(masterSpkGain) masterSpkGain.gain.setTargetAtTime(spkMuted ? 0 : 1, audioCtx.currentTime, 0.05);
+  Object.values(peerRxNodes).forEach(n => {
+    if(n.vol) n.vol.gain.value = vol;
+    if(n.audioEl) n.audioEl.volume = vol;
+  });
   log(spkMuted ? 'Speaker muted 🔊' : 'Speaker unmuted 🔊', 'warn');
 });
 
@@ -595,6 +596,8 @@ function distCurve(amount){
 }
 
 // ── TX audio chain ─────────────────────────────────────────
+// IMPORTANT: We always send audio tracks — we just enable/disable them for PTT
+// The tracks must be ENABLED when calling so the peer connection is established properly
 function buildTxChain(micStream){
   const ctx=ensureCtx();
   const src=ctx.createMediaStreamSource(micStream);
@@ -612,22 +615,51 @@ function buildTxChain(micStream){
 }
 
 // ── RX audio chain ─────────────────────────────────────────
-function applyRxFx(stream,pid){
-  const ctx=ensureCtx();
-  const src=ctx.createMediaStreamSource(stream);
-  const vol=ctx.createGain();
-  // Respect current speaker mute state
-  vol.gain.value = spkMuted ? 0 : volSlider.value/100;
+// KEY FIX: Use <audio> elements for playback, NOT Web Audio API destination
+// Web Audio → audioCtx.destination causes the output to loop back into the mic
+// <audio> elements use the OS audio stack which is properly echo-cancelled
+function applyRxFx(stream, pid){
+  // Remove old audio element if exists
+  const old = document.getElementById('rx-audio-'+pid);
+  if(old) old.remove();
+
+  // Create a dedicated <audio> element — this is the correct way to play remote streams
+  const audioEl = document.createElement('audio');
+  audioEl.id = 'rx-audio-'+pid;
+  audioEl.autoplay = true;
+  audioEl.playsInline = true;
+  audioEl.volume = spkMuted ? 0 : volSlider.value/100;
+  document.body.appendChild(audioEl);
+
   if(fxRadio){
-    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=300; hp.Q.value=.5;
-    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1700; bp.Q.value=.65;
-    const ws=ctx.createWaveShaper(); ws.curve=distCurve(40); ws.oversample='4x';
-    const comp=ctx.createDynamicsCompressor();
-    comp.threshold.value=-18; comp.knee.value=6; comp.ratio.value=14; comp.attack.value=.001; comp.release.value=.06;
-    src.connect(hp); hp.connect(bp); bp.connect(ws); ws.connect(comp); comp.connect(vol);
-  } else { src.connect(vol); }
-  vol.connect(ctx.destination);
-  peerRxNodes[pid]={vol};
+    // Apply radio FX via Web Audio but output to a NEW AudioContext
+    // so it doesn't share the mic's input context
+    try{
+      const rxCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const src = rxCtx.createMediaStreamSource(stream);
+      const hp = rxCtx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=300; hp.Q.value=.5;
+      const bp = rxCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1700; bp.Q.value=.65;
+      const ws = rxCtx.createWaveShaper(); ws.curve=distCurve(40); ws.oversample='4x';
+      const comp = rxCtx.createDynamicsCompressor();
+      comp.threshold.value=-18; comp.knee.value=6; comp.ratio.value=14; comp.attack.value=.001; comp.release.value=.06;
+      const vol = rxCtx.createGain(); vol.gain.value = spkMuted ? 0 : volSlider.value/100;
+      const dest = rxCtx.createMediaStreamDestination();
+      src.connect(hp); hp.connect(bp); bp.connect(ws); ws.connect(comp); comp.connect(vol); vol.connect(dest);
+      audioEl.srcObject = dest.stream;
+      peerRxNodes[pid] = { vol, audioEl, rxCtx };
+    } catch(e){
+      // Fallback: direct playback if Web Audio fails
+      audioEl.srcObject = stream;
+      peerRxNodes[pid] = { audioEl };
+    }
+  } else {
+    audioEl.srcObject = stream;
+    peerRxNodes[pid] = { audioEl };
+  }
+
+  // Must call play() explicitly on mobile
+  audioEl.play().catch(e=>log('Audio play failed: '+e,'warn'));
+  log('Playing audio from '+pid,'success');
 }
 
 // ── Signal bars ────────────────────────────────────────────
@@ -661,9 +693,12 @@ function setChannel(btn){
 
 // ── Volume ─────────────────────────────────────────────────
 volSlider.addEventListener('input',()=>{
-  if(spkMuted) return; // don't change vol while speaker muted
+  if(spkMuted) return;
   const v=volSlider.value/100;
-  Object.values(peerRxNodes).forEach(n=>{if(n.vol)n.vol.gain.value=v;});
+  Object.values(peerRxNodes).forEach(n=>{
+    if(n.vol) n.vol.gain.value=v;
+    if(n.audioEl) n.audioEl.volume=v;
+  });
 });
 
 // ── Status ─────────────────────────────────────────────────
@@ -1008,6 +1043,11 @@ function disconnectAll(){
   if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; }
   if(peer){ try{peer.destroy();}catch(e){} peer=null; }
   if(rawMicStream){ rawMicStream.getTracks().forEach(t=>t.stop()); rawMicStream=null; }
+  // Clean up all audio elements
+  document.querySelectorAll('[id^="rx-audio-"]').forEach(el=>el.remove());
+  // Clean up rx audio contexts
+  Object.values(peerRxNodes).forEach(n=>{ try{ if(n.rxCtx) n.rxCtx.close(); }catch(e){} });
+  txGainNode=null;
   localStream=null; stopViz(); stopStatic();
   onlineUsers={}; talkingPeer=null; peerRxNodes={};
   // Reset mute UI
@@ -1028,23 +1068,41 @@ function disconnectAll(){
 }
 
 // ── PTT ────────────────────────────────────────────────────
+// IMPORTANT: We keep tracks always ENABLED so WebRTC stays connected
+// We use a GainNode (txGain) to silence the audio when not transmitting
+let txGainNode = null;
+
+function buildTxChainWithGate(micStream){
+  const ctx=ensureCtx();
+  const src=ctx.createMediaStreamSource(micStream);
+  const dest=ctx.createMediaStreamDestination();
+  // Gate gain — 0 = silent (not transmitting), 1 = transmitting
+  txGainNode = ctx.createGain();
+  txGainNode.gain.value = 0; // start silent
+
+  if(fxRadio){
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=300; hp.Q.value=.5;
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1700; bp.Q.value=.65;
+    const ws=ctx.createWaveShaper(); ws.curve=distCurve(55); ws.oversample='4x';
+    const comp=ctx.createDynamicsCompressor();
+    comp.threshold.value=-22; comp.knee.value=4; comp.ratio.value=18; comp.attack.value=.001; comp.release.value=.04;
+    const g=ctx.createGain(); g.gain.value=1.5;
+    src.connect(hp); hp.connect(bp); bp.connect(ws); ws.connect(comp); comp.connect(g); g.connect(txGainNode); txGainNode.connect(dest);
+  } else {
+    src.connect(txGainNode); txGainNode.connect(dest);
+  }
+  return dest.stream;
+}
+
 async function startTx(){
   if(!roomId){ log('Join a room first!','warn'); return; }
   if(isTx) return;
   if(micMuted){ log('Mic is muted — unmute first!','warn'); micMuteBtn.style.animation='shake .3s'; setTimeout(()=>micMuteBtn.style.animation='',400); return; }
   isTx=true; ensureCtx();
-  if(!rawMicStream){
-    try{
-      rawMicStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,sampleRate:48000},video:false});
-      localStream=buildTxChain(rawMicStream);
-      // Add track to existing calls
-      Object.entries(audioCalls).forEach(([pid,call])=>{
-        localStream.getTracks().forEach(t=>{ try{ call.peerConnection.getSenders().forEach(s=>{ if(s.track&&s.track.kind==='audio') s.replaceTrack(t); }); }catch(e){} });
-      });
-      startViz(rawMicStream); log('Mic + radio FX active','success');
-    }catch(e){ log('Mic error: '+e.message,'warn'); isTx=false; return; }
-  }
-  localStream.getAudioTracks().forEach(t=>t.enabled=true);
+
+  // Open the TX gate
+  if(txGainNode) txGainNode.gain.setTargetAtTime(1, audioCtx.currentTime, 0.01);
+
   playPttStart();
   if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(.05,audioCtx.currentTime,.03);
   pttBtn.classList.add('transmitting');
@@ -1055,7 +1113,10 @@ async function startTx(){
 
 function stopTx(){
   if(!isTx) return; isTx=false;
-  if(localStream) localStream.getAudioTracks().forEach(t=>t.enabled=false);
+
+  // Close the TX gate — immediate silence
+  if(txGainNode) txGainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.01);
+
   playPttEnd();
   if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(.03,audioCtx.currentTime,.2);
   pttBtn.classList.remove('transmitting');
@@ -1078,14 +1139,17 @@ connectBtn.addEventListener('click',async()=>{
   const room=roomInput.value.trim().toUpperCase();
   if(!room){ roomInput.focus(); log('Enter a Room ID','warn'); return; }
   ensureCtx();
-  // Get mic first
+  // Get mic — tracks stay ENABLED always, PTT gate via GainNode
   try{
-    rawMicStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
-    localStream=buildTxChain(rawMicStream);
-    localStream.getAudioTracks().forEach(t=>t.enabled=false);
+    rawMicStream=await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,sampleRate:48000},
+      video:false
+    });
+    localStream = buildTxChainWithGate(rawMicStream);
+    // Tracks remain enabled — txGainNode silences audio when not transmitting
     startViz(rawMicStream);
+    log('Mic ready — tracks always live for WebRTC','success');
   }catch(e){ log('Mic denied: '+e.message,'warn'); return; }
-  // Try to become host first; PeerJS will error if ID taken → become guest
   becomeHost(room, channel);
 });
 roomInput.addEventListener('keydown',e=>{ if(e.key==='Enter') connectBtn.click(); });
