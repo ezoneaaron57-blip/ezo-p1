@@ -294,6 +294,67 @@
   }
   .chat-ping.show{display:inline-block;}
   @keyframes pingpulse{from{opacity:1}to{opacity:.3}}
+
+  /* ── Voice Note ───────────────────────────────────────── */
+  .vn-btn{
+    background:var(--metal);border:none;border-left:1px solid rgba(0,0,0,.4);
+    color:var(--cream);font-size:16px;padding:10px 13px;cursor:pointer;
+    transition:all .15s;user-select:none;touch-action:none;flex-shrink:0;
+  }
+  .vn-btn:disabled{opacity:.3;cursor:not-allowed;}
+  .vn-btn.recording{
+    background:var(--red);animation:recpulse .6s infinite alternate;
+  }
+  @keyframes recpulse{from{background:var(--red)}to{background:#ff6655}}
+  /* Voice note bubble */
+  .vn-bubble{
+    display:flex;align-items:center;gap:8px;
+    padding:7px 10px;border-radius:8px;max-width:220px;cursor:pointer;
+    font-family:'Share Tech Mono',monospace;
+  }
+  .chat-msg.mine .vn-bubble{
+    background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.2);
+    border-radius:8px 8px 2px 8px;
+  }
+  .chat-msg.theirs .vn-bubble{
+    background:rgba(57,255,20,.07);border:1px solid rgba(57,255,20,.12);
+    border-radius:8px 8px 8px 2px;
+  }
+  .vn-play-btn{
+    width:28px;height:28px;border-radius:50%;border:none;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;font-size:12px;
+    flex-shrink:0;transition:transform .1s;
+  }
+  .chat-msg.mine .vn-play-btn{background:rgba(245,166,35,.3);color:var(--amber);}
+  .chat-msg.theirs .vn-play-btn{background:rgba(57,255,20,.2);color:var(--screen-green);}
+  .vn-play-btn:active{transform:scale(.9);}
+  .vn-play-btn.playing{animation:spin .8s linear infinite;}
+  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  .vn-waveform{
+    flex:1;height:24px;display:flex;align-items:center;gap:1.5px;overflow:hidden;
+  }
+  .vn-wave-bar{
+    width:3px;border-radius:2px;flex-shrink:0;transition:opacity .2s;
+  }
+  .chat-msg.mine .vn-wave-bar{background:var(--amber);opacity:.5;}
+  .chat-msg.theirs .vn-wave-bar{background:var(--screen-green);opacity:.5;}
+  .vn-wave-bar.played{opacity:1;}
+  .vn-duration{
+    font-size:9px;letter-spacing:1px;flex-shrink:0;
+  }
+  .chat-msg.mine .vn-duration{color:var(--amber-dim);}
+  .chat-msg.theirs .vn-duration{color:var(--screen-dim);}
+  /* Recording indicator in input row */
+  .vn-recording-bar{
+    display:none;align-items:center;gap:8px;padding:8px 12px;
+    background:rgba(232,57,42,.1);border-top:1px solid rgba(232,57,42,.2);
+    font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--red);letter-spacing:1px;
+  }
+  .vn-recording-bar.show{display:flex;}
+  .vn-rec-dot{width:8px;height:8px;border-radius:50%;background:var(--red);animation:recpulse .5s infinite alternate;flex-shrink:0;}
+  .vn-rec-timer{flex:1;}
+  .vn-cancel-btn{background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;padding:2px 6px;opacity:.7;}
+  .vn-cancel-btn:hover{opacity:1;}
 </style>
 </head>
 <body>
@@ -414,8 +475,14 @@
         <div class="msg-bubble">Join a room to start chatting</div>
       </div>
     </div>
+    <div class="vn-recording-bar" id="vnRecBar">
+      <div class="vn-rec-dot"></div>
+      <span class="vn-rec-timer" id="vnRecTimer">REC 0:00</span>
+      <button class="vn-cancel-btn" id="vnCancelBtn">✕ CANCEL</button>
+    </div>
     <div class="chat-input-row">
       <input class="chat-input" id="chatInput" type="text" maxlength="200" placeholder="Type a message..." disabled />
+      <button class="vn-btn" id="vnBtn" disabled title="Hold to record voice note">🎙</button>
       <button class="chat-send-btn" id="chatSendBtn" disabled>➤</button>
     </div>
   </div>
@@ -763,6 +830,7 @@ function enableChat(enabled){
   chatEnabled = enabled;
   chatInput.disabled = !enabled;
   chatSendBtn.disabled = !enabled;
+  document.getElementById('vnBtn').disabled = !enabled;
   chatInput.placeholder = enabled ? 'Type a message...' : 'Join a room to chat';
 }
 
@@ -833,7 +901,217 @@ chatSendBtn.addEventListener('click', sendChat);
 chatInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); sendChat(); } });
 
 // ══════════════════════════════════════════════════════════
-//  PeerJS SIGNALING
+//  VOICE NOTES
+// ══════════════════════════════════════════════════════════
+let vnRecorder = null;
+let vnChunks = [];
+let vnRecording = false;
+let vnRecStart = 0;
+let vnRecTimerInterval = null;
+let vnMicStream = null;
+
+const vnBtn       = document.getElementById('vnBtn');
+const vnRecBar    = document.getElementById('vnRecBar');
+const vnRecTimer  = document.getElementById('vnRecTimer');
+const vnCancelBtn = document.getElementById('vnCancelBtn');
+
+// Format seconds → m:ss
+function fmtDur(secs){ return Math.floor(secs/60)+':'+(secs%60<10?'0':'')+(secs%60); }
+
+// Generate a simple waveform array from audio data
+async function getWaveform(blob, bars=30){
+  try{
+    const ab = await blob.arrayBuffer();
+    const ac = new OfflineAudioContext(1, 44100, 44100);
+    const buf = await ac.decodeAudioData(ab);
+    const data = buf.getChannelData(0);
+    const step = Math.floor(data.length / bars);
+    const wave = [];
+    for(let i=0;i<bars;i++){
+      let sum=0;
+      for(let j=0;j<step;j++) sum+=Math.abs(data[i*step+j]||0);
+      wave.push(sum/step);
+    }
+    const max = Math.max(...wave, 0.01);
+    return wave.map(v=>Math.round((v/max)*100));
+  } catch(e){ return Array(30).fill(50); }
+}
+
+// Build a voice note bubble element
+function buildVnBubble(isMine, audioUrl, duration, waveform, senderId, ts){
+  const div = document.createElement('div');
+  div.className = 'chat-msg '+(isMine?'mine':'theirs');
+
+  const shortId = senderId.slice(0,10);
+  const timeStr = ts ? new Date(ts).toTimeString().slice(0,5) : new Date().toTimeString().slice(0,5);
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta'+(isMine?' mine':'');
+  meta.textContent = isMine ? `YOU · ${timeStr} · 🎙 VOICE NOTE` : `${shortId} · ${timeStr} · 🎙 VOICE NOTE`;
+  div.appendChild(meta);
+
+  const bubble = document.createElement('div');
+  bubble.className = 'vn-bubble';
+
+  // Play button
+  const playBtn = document.createElement('button');
+  playBtn.className = 'vn-play-btn';
+  playBtn.textContent = '▶';
+  bubble.appendChild(playBtn);
+
+  // Waveform
+  const wf = document.createElement('div');
+  wf.className = 'vn-waveform';
+  const barEls = [];
+  waveform.forEach((h,i)=>{
+    const b = document.createElement('div');
+    b.className = 'vn-wave-bar';
+    b.style.height = Math.max(3, Math.round(h*0.22))+'px';
+    wf.appendChild(b);
+    barEls.push(b);
+  });
+  bubble.appendChild(wf);
+
+  // Duration
+  const dur = document.createElement('div');
+  dur.className = 'vn-duration';
+  dur.textContent = fmtDur(duration);
+  bubble.appendChild(dur);
+
+  // Audio playback logic
+  let audio = null;
+  let playing = false;
+  playBtn.addEventListener('click', ()=>{
+    if(playing){
+      audio.pause(); audio.currentTime=0;
+      playing=false; playBtn.textContent='▶'; playBtn.classList.remove('playing');
+      barEls.forEach(b=>b.classList.remove('played')); return;
+    }
+    audio = new Audio(audioUrl);
+    audio.volume = spkMuted ? 0 : volSlider.value/100;
+    playing=true; playBtn.textContent='■'; playBtn.classList.add('playing');
+    const totalDur = duration||1;
+    const prog = setInterval(()=>{
+      if(!audio||audio.paused){ clearInterval(prog); return; }
+      const pct = audio.currentTime/totalDur;
+      const lit = Math.floor(pct*barEls.length);
+      barEls.forEach((b,i)=>b.classList.toggle('played',i<lit));
+      dur.textContent = fmtDur(Math.floor(audio.currentTime));
+    },100);
+    audio.onended=()=>{
+      clearInterval(prog); playing=false;
+      playBtn.textContent='▶'; playBtn.classList.remove('playing');
+      barEls.forEach(b=>b.classList.add('played'));
+      dur.textContent=fmtDur(duration);
+    };
+    audio.play().catch(e=>log('VN play error: '+e,'warn'));
+  });
+
+  div.appendChild(bubble);
+  return div;
+}
+
+// Add incoming/outgoing voice note to chat
+async function addVoiceNote(blob, senderId, ts, waveformData=null){
+  // Remove join-room placeholder
+  const ph = chatMessages.querySelector('.chat-msg.system');
+  if(ph && ph.querySelector('.msg-bubble')?.textContent==='Join a room to chat') ph.remove();
+
+  const isMine = senderId===myId;
+  const url = URL.createObjectURL(blob);
+
+  // Get duration
+  let duration = 0;
+  try{
+    const tmp = new Audio(url);
+    await new Promise(r=>{ tmp.onloadedmetadata=()=>{ duration=Math.round(tmp.duration)||0; r(); }; setTimeout(r,2000); });
+  }catch(e){}
+
+  const waveform = waveformData || await getWaveform(blob);
+  const el = buildVnBubble(isMine, url, duration, waveform, senderId, ts);
+  chatMessages.appendChild(el);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  if(!chatOpen && !isMine){
+    unreadCount++;
+    chatUnread.textContent=unreadCount; chatUnread.classList.add('show');
+    chatPing.classList.add('show');
+    playChatPing();
+  }
+}
+
+// Start recording
+async function startVnRecording(){
+  if(vnRecording || !chatEnabled) return;
+  try{
+    vnMicStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
+  }catch(e){ log('Mic denied for voice note: '+e.message,'warn'); return; }
+
+  vnChunks=[];
+  vnRecorder = new MediaRecorder(vnMicStream, {mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm'});
+  vnRecorder.ondataavailable = e=>{ if(e.data.size>0) vnChunks.push(e.data); };
+  vnRecorder.onstop = async()=>{
+    vnMicStream.getTracks().forEach(t=>t.stop()); vnMicStream=null;
+    if(!vnChunks.length) return;
+    const blob = new Blob(vnChunks, {type:vnRecorder.mimeType});
+    vnChunks=[];
+    if(blob.size < 1000){ log('Voice note too short','warn'); return; }
+    // Show in own chat
+    const ts = Date.now();
+    const waveform = await getWaveform(blob);
+    addVoiceNote(blob, myId, ts, waveform);
+    // Convert to base64 and broadcast
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const b64 = reader.result.split(',')[1];
+      broadcast({type:'voice-note', id:myId, ts, b64, mime:vnRecorder.mimeType, waveform});
+      log('Voice note sent','success');
+    };
+    reader.readAsDataURL(blob);
+  };
+
+  vnRecorder.start(100);
+  vnRecording=true;
+  vnRecStart = Date.now();
+  vnBtn.classList.add('recording');
+  vnBtn.textContent='⏹';
+  vnRecBar.classList.add('show');
+
+  vnRecTimerInterval = setInterval(()=>{
+    const secs = Math.floor((Date.now()-vnRecStart)/1000);
+    vnRecTimer.textContent = 'REC '+fmtDur(secs);
+    if(secs>=60) stopVnRecording(); // max 60s
+  },500);
+}
+
+function stopVnRecording(){
+  if(!vnRecording) return;
+  vnRecording=false;
+  clearInterval(vnRecTimerInterval);
+  vnBtn.classList.remove('recording'); vnBtn.textContent='🎙';
+  vnRecBar.classList.remove('show'); vnRecTimer.textContent='REC 0:00';
+  if(vnRecorder && vnRecorder.state!=='inactive') vnRecorder.stop();
+}
+
+function cancelVnRecording(){
+  vnChunks=[]; // discard
+  if(vnRecorder && vnRecorder.state!=='inactive') vnRecorder.stop();
+  vnRecording=false;
+  clearInterval(vnRecTimerInterval);
+  vnBtn.classList.remove('recording'); vnBtn.textContent='🎙';
+  vnRecBar.classList.remove('show'); vnRecTimer.textContent='REC 0:00';
+  if(vnMicStream){ vnMicStream.getTracks().forEach(t=>t.stop()); vnMicStream=null; }
+  log('Voice note cancelled','warn');
+}
+
+// Tap to start, tap again to stop
+vnBtn.addEventListener('click', ()=>{
+  if(!chatEnabled) return;
+  if(vnRecording) stopVnRecording();
+  else startVnRecording();
+});
+vnCancelBtn.addEventListener('click', cancelVnRecording);
+
+
 //  Room convention: host peer ID = "hb-<ROOMID>-ch<CH>"
 //  Guests connect to that known host ID.
 //  If host disconnects, the next guest tries to become host.
@@ -894,6 +1172,18 @@ function handleDataMsg(msg, fromId){
       addChatMessage(msg.text, msg.id, msg.ts);
     }
     // Host relays chat to all other guests
+    if(isHost) broadcast(msg, fromId);
+  } else if(msg.type==='voice-note'){
+    if(msg.id !== myId){
+      try{
+        // Decode base64 back to blob
+        const binary = atob(msg.b64);
+        const bytes = new Uint8Array(binary.length);
+        for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+        const blob = new Blob([bytes], {type: msg.mime||'audio/webm'});
+        addVoiceNote(blob, msg.id, msg.ts, msg.waveform||null);
+      } catch(e){ log('Voice note decode error: '+e,'warn'); }
+    }
     if(isHost) broadcast(msg, fromId);
   }
 }
