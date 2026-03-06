@@ -203,6 +203,97 @@
   .log-entry{line-height:1.8;}
   .log-entry.info{color:#2a8a08;}.log-entry.success{color:var(--screen-green);}
   .log-entry.warn{color:var(--amber-dim);}.log-entry.tx{color:var(--red);opacity:.8;}
+  /* ── Chat Panel ─────────────────────────────────────── */
+  .chat-panel{
+    width:320px;margin-top:12px;
+    background:linear-gradient(160deg,var(--olive) 0%,var(--olive-dark) 100%);
+    border-radius:14px;
+    box-shadow:0 0 0 2px var(--olive-light),0 0 0 4px var(--olive-dark),0 10px 30px rgba(0,0,0,.6);
+    overflow:hidden;
+  }
+  .chat-header{
+    background:linear-gradient(90deg,#2a2d25,#3a3d35,#2a2d25);
+    padding:10px 16px;display:flex;align-items:center;justify-content:space-between;
+    border-bottom:1px solid rgba(0,0,0,.4);cursor:pointer;user-select:none;
+  }
+  .chat-header-left{display:flex;align-items:center;gap:8px;}
+  .chat-title{font-size:12px;font-weight:700;letter-spacing:3px;color:var(--cream);text-transform:uppercase;}
+  .chat-unread{
+    background:var(--red);color:#fff;font-size:9px;font-weight:700;
+    border-radius:10px;padding:1px 6px;display:none;animation:popIn .2s ease;
+  }
+  .chat-unread.show{display:inline-block;}
+  @keyframes popIn{from{transform:scale(0)}to{transform:scale(1)}}
+  .chat-toggle-icon{color:var(--cream);opacity:.5;font-size:12px;transition:transform .3s;}
+  .chat-toggle-icon.open{transform:rotate(180deg);}
+  .chat-body{display:none;flex-direction:column;}
+  .chat-body.open{display:flex;}
+  .chat-messages{
+    height:200px;overflow-y:auto;padding:10px 12px;
+    display:flex;flex-direction:column;gap:8px;
+    background:var(--screen-bg);
+    scrollbar-width:thin;scrollbar-color:var(--screen-dim) transparent;
+  }
+  .chat-messages::-webkit-scrollbar{width:3px;}
+  .chat-messages::-webkit-scrollbar-thumb{background:var(--screen-dim);border-radius:2px;}
+  .chat-messages::before{
+    content:'';position:absolute;left:0;right:0;top:0;height:100%;
+    background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.06) 3px,rgba(0,0,0,.06) 4px);
+    pointer-events:none;
+  }
+  .chat-msg{
+    display:flex;flex-direction:column;gap:2px;
+    animation:msgIn .25s ease;
+  }
+  @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .chat-msg.mine{align-items:flex-end;}
+  .chat-msg.theirs{align-items:flex-start;}
+  .chat-msg.system{align-items:center;}
+  .msg-meta{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--screen-dim);letter-spacing:1px;}
+  .msg-meta.mine{color:var(--amber-dim);}
+  .msg-bubble{
+    font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.5px;
+    padding:6px 10px;border-radius:8px;max-width:220px;word-break:break-word;line-height:1.5;
+  }
+  .chat-msg.mine .msg-bubble{
+    background:rgba(245,166,35,.12);color:var(--amber);
+    border:1px solid rgba(245,166,35,.2);border-radius:8px 8px 2px 8px;
+  }
+  .chat-msg.theirs .msg-bubble{
+    background:rgba(57,255,20,.07);color:var(--screen-green);
+    border:1px solid rgba(57,255,20,.12);border-radius:8px 8px 8px 2px;
+  }
+  .chat-msg.system .msg-bubble{
+    background:rgba(255,255,255,.04);color:var(--screen-dim);
+    border:1px solid rgba(255,255,255,.06);font-size:9px;letter-spacing:1px;
+    border-radius:4px;padding:3px 8px;
+  }
+  .chat-input-row{
+    display:flex;gap:0;border-top:1px solid rgba(0,0,0,.4);
+  }
+  .chat-input{
+    flex:1;background:var(--olive-dark);border:none;outline:none;
+    color:var(--cream);font-family:'Share Tech Mono',monospace;font-size:12px;
+    padding:10px 12px;letter-spacing:.5px;
+    border-radius:0 0 0 14px;
+  }
+  .chat-input::placeholder{color:var(--screen-dim);}
+  .chat-input:disabled{opacity:.4;cursor:not-allowed;}
+  .chat-send-btn{
+    background:var(--metal);border:none;border-left:1px solid rgba(0,0,0,.4);
+    color:var(--cream);font-size:16px;padding:10px 14px;cursor:pointer;
+    transition:background .15s;border-radius:0 0 14px 0;user-select:none;
+  }
+  .chat-send-btn:hover{background:var(--metal-light);}
+  .chat-send-btn:active{background:var(--amber-dim);}
+  .chat-send-btn:disabled{opacity:.3;cursor:not-allowed;}
+  /* notification ping sound indicator */
+  .chat-ping{
+    width:8px;height:8px;border-radius:50%;background:var(--screen-green);
+    box-shadow:0 0 6px var(--screen-green);display:none;animation:pingpulse 1s infinite alternate;
+  }
+  .chat-ping.show{display:inline-block;}
+  @keyframes pingpulse{from{opacity:1}to{opacity:.3}}
 </style>
 </head>
 <body>
@@ -306,6 +397,29 @@
 </div>
 
 <div class="log-panel" id="logPanel"></div>
+
+<!-- ── Chat Panel ─────────────────────────────────────── -->
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-header" id="chatHeader">
+    <div class="chat-header-left">
+      <span class="chat-ping" id="chatPing"></span>
+      <span class="chat-title">💬 Text Chat</span>
+      <span class="chat-unread" id="chatUnread">0</span>
+    </div>
+    <span class="chat-toggle-icon" id="chatToggleIcon">▼</span>
+  </div>
+  <div class="chat-body" id="chatBody">
+    <div class="chat-messages" id="chatMessages">
+      <div class="chat-msg system">
+        <div class="msg-bubble">Join a room to start chatting</div>
+      </div>
+    </div>
+    <div class="chat-input-row">
+      <input class="chat-input" id="chatInput" type="text" maxlength="200" placeholder="Type a message..." disabled />
+      <button class="chat-send-btn" id="chatSendBtn" disabled>➤</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ═══════════════════════════════════════════════════════════
@@ -580,6 +694,110 @@ function renderUsers(){
 }
 
 // ══════════════════════════════════════════════════════════
+//  CHAT
+// ══════════════════════════════════════════════════════════
+let chatOpen = false;
+let unreadCount = 0;
+let chatEnabled = false;
+
+const chatHeader   = document.getElementById('chatHeader');
+const chatBody     = document.getElementById('chatBody');
+const chatMessages = document.getElementById('chatMessages');
+const chatInput    = document.getElementById('chatInput');
+const chatSendBtn  = document.getElementById('chatSendBtn');
+const chatUnread   = document.getElementById('chatUnread');
+const chatPing     = document.getElementById('chatPing');
+const chatToggleIcon = document.getElementById('chatToggleIcon');
+
+// Toggle chat open/close
+chatHeader.addEventListener('click', ()=>{
+  chatOpen = !chatOpen;
+  chatBody.classList.toggle('open', chatOpen);
+  chatToggleIcon.classList.toggle('open', chatOpen);
+  if(chatOpen){
+    unreadCount = 0;
+    chatUnread.textContent = '0';
+    chatUnread.classList.remove('show');
+    chatPing.classList.remove('show');
+    setTimeout(()=>chatMessages.scrollTop=chatMessages.scrollHeight, 50);
+  }
+});
+
+// Enable/disable chat
+function enableChat(enabled){
+  chatEnabled = enabled;
+  chatInput.disabled = !enabled;
+  chatSendBtn.disabled = !enabled;
+  chatInput.placeholder = enabled ? 'Type a message...' : 'Join a room to chat';
+}
+
+// Play a soft notification sound for incoming messages
+function playChatPing(){
+  if(!fxBeep) return;
+  const ctx = ensureCtx();
+  const t = ctx.currentTime;
+  playTone(t, 1400, 0.07, 0.12);
+  playTone(t+0.08, 1800, 0.06, 0.08);
+}
+
+// Add a message bubble to chat
+function addChatMessage(text, senderId, timestamp){
+  // Remove placeholder if present
+  const placeholder = chatMessages.querySelector('.chat-msg.system');
+  if(placeholder && placeholder.querySelector('.msg-bubble')?.textContent === 'Join a room to chat'){
+    placeholder.remove();
+  }
+
+  const isMine = senderId === myId;
+  const isSystem = senderId === 'system';
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + (isSystem ? 'system' : isMine ? 'mine' : 'theirs');
+
+  const ts = timestamp ? new Date(timestamp).toTimeString().slice(0,5) : new Date().toTimeString().slice(0,5);
+  const shortId = senderId.slice(0,10);
+
+  if(!isSystem){
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta' + (isMine?' mine':'');
+    meta.textContent = isMine ? `YOU · ${ts}` : `${shortId} · ${ts}`;
+    div.appendChild(meta);
+  }
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = text;
+  div.appendChild(bubble);
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  // Notify if chat closed and message is from someone else
+  if(!chatOpen && !isMine && !isSystem){
+    unreadCount++;
+    chatUnread.textContent = unreadCount;
+    chatUnread.classList.add('show');
+    chatPing.classList.add('show');
+    playChatPing();
+  }
+}
+
+function addSystemMsg(text){
+  addChatMessage(text, 'system', null);
+}
+
+// Send a chat message
+function sendChat(){
+  const text = chatInput.value.trim();
+  if(!text || !chatEnabled) return;
+  chatInput.value = '';
+  const msg = { type:'chat', id:myId, text, ts: Date.now() };
+  addChatMessage(text, myId, msg.ts);
+  broadcast(msg);
+}
+
+chatSendBtn.addEventListener('click', sendChat);
+chatInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); sendChat(); } });
+
+// ══════════════════════════════════════════════════════════
 //  PeerJS SIGNALING
 //  Room convention: host peer ID = "hb-<ROOMID>-ch<CH>"
 //  Guests connect to that known host ID.
@@ -607,12 +825,16 @@ function handleDataMsg(msg, fromId){
     (msg.users||[]).forEach(u=>{ if(u!==myId) onlineUsers[u]={talking:false}; });
     renderUsers(); log('Got user list: '+Object.keys(onlineUsers).length+' peers','info');
   } else if(msg.type==='user-join'){
-    if(msg.id!==myId){ onlineUsers[msg.id]={talking:false}; renderUsers(); log(msg.id+' joined','info'); }
-    // Host relays to others
+    if(msg.id!==myId){
+      onlineUsers[msg.id]={talking:false}; renderUsers();
+      log(msg.id+' joined','info');
+      addSystemMsg(msg.id.slice(0,12)+' joined the room');
+    }
     if(isHost) broadcast(msg, fromId);
   } else if(msg.type==='user-leave'){
     delete onlineUsers[msg.id]; if(talkingPeer===msg.id) talkingPeer=null;
     renderUsers(); log(msg.id+' left','warn');
+    addSystemMsg(msg.id.slice(0,12)+' left the room');
     if(isHost) broadcast(msg, fromId);
   } else if(msg.type==='ptt-start'){
     if(msg.id!==myId){
@@ -631,6 +853,12 @@ function handleDataMsg(msg, fromId){
       playPttEnd();
       if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(.03,audioCtx.currentTime,.25);
     }
+    if(isHost) broadcast(msg, fromId);
+  } else if(msg.type==='chat'){
+    if(msg.id !== myId){
+      addChatMessage(msg.text, msg.id, msg.ts);
+    }
+    // Host relays chat to all other guests
     if(isHost) broadcast(msg, fromId);
   }
 }
@@ -688,8 +916,9 @@ function becomeHost(room, ch){
     setStatus('ONLINE · LISTENING'); updateSignal(4);
     startStatic(); pttBtn.disabled=false;
     connectBtn.textContent='LEAVE'; connectBtn.classList.add('connected');
-    renderUsers();
-    startHeartbeat();
+    renderUsers(); startHeartbeat();
+    enableChat(true);
+    addSystemMsg('Room '+room+' created · You are HOST · ch'+ch);
   });
   // Accept incoming connections
   peer.on('connection',conn=>{
@@ -738,8 +967,9 @@ function joinAsGuest(room, ch){
       setStatus('ONLINE · LISTENING'); updateSignal(4);
       startStatic(); pttBtn.disabled=false;
       connectBtn.textContent='LEAVE'; connectBtn.classList.add('connected');
-      renderUsers();
-      startHeartbeat();
+      renderUsers(); startHeartbeat();
+      enableChat(true);
+      addSystemMsg('Joined room '+room+' · ch'+ch);
       // Call the host for audio
       callPeer(hid);
     });
@@ -785,6 +1015,10 @@ function disconnectAll(){
   micMuteBtn.classList.remove('muted'); spkMuteBtn.classList.remove('muted');
   micMuteLabel.textContent='MIC ON'; spkMuteLabel.textContent='SPK ON';
   micFlag.classList.remove('show'); spkFlag.classList.remove('show');
+  // Reset chat
+  enableChat(false);
+  unreadCount=0; chatUnread.classList.remove('show'); chatPing.classList.remove('show');
+  addSystemMsg('Disconnected from room');
   roomId=null; myId=null; isHost=false;
   roomLabel.textContent='NO ROOM'; pttBtn.disabled=true;
   connectBtn.textContent='JOIN'; connectBtn.classList.remove('connected');
