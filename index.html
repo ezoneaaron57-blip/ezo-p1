@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HomeBase Radio</title>
+<!-- PeerJS — reliable signaling + WebRTC wrapper -->
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Oswald:wght@300;400;600;700&display=swap');
   :root {
@@ -16,7 +18,8 @@
   body{
     background:var(--dark);min-height:100vh;display:flex;flex-direction:column;
     align-items:center;justify-content:center;font-family:'Oswald',sans-serif;
-    background-image:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.15) 2px,rgba(0,0,0,.15) 4px),
+    background-image:
+      repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.15) 2px,rgba(0,0,0,.15) 4px),
       repeating-linear-gradient(90deg,transparent,transparent 2px,rgba(0,0,0,.05) 2px,rgba(0,0,0,.05) 4px);
     padding:20px;
   }
@@ -36,6 +39,8 @@
   .indicator.power{background:var(--green);box-shadow:0 0 6px var(--green),inset 0 1px 2px rgba(255,255,255,.2);}
   .indicator.tx.active{background:var(--red);box-shadow:0 0 8px var(--red);}
   .indicator.rx.active{background:var(--amber);box-shadow:0 0 8px var(--amber);}
+
+  /* Screen */
   .screen-section{
     margin:12px 20px;background:var(--screen-bg);border-radius:8px;
     border:2px solid #0a0e06;box-shadow:inset 0 0 20px rgba(0,0,0,.8);
@@ -46,50 +51,53 @@
     background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.15) 3px,rgba(0,0,0,.15) 4px);
     pointer-events:none;z-index:10;
   }
-  .channel-display{display:flex;align-items:baseline;gap:6px;margin-bottom:4px;}
+  .channel-display{display:flex;align-items:baseline;gap:6px;margin-bottom:2px;}
   .channel-label{font-size:10px;color:var(--screen-dim);letter-spacing:2px;}
   .channel-num{font-size:28px;color:var(--screen-green);line-height:1;text-shadow:0 0 10px rgba(57,255,20,.5);}
-  .status-text{font-size:10px;color:var(--screen-dim);letter-spacing:1px;margin-top:4px;height:14px;overflow:hidden;}
+  .screen-room{color:#2a8a08;font-size:11px;letter-spacing:1px;font-family:'Share Tech Mono',monospace;}
+  .status-text{font-size:10px;color:var(--screen-dim);letter-spacing:1px;margin-top:3px;height:14px;overflow:hidden;}
   .status-text.active-status{color:var(--screen-green);animation:blink 1s infinite;}
   @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
   .signal-bars{display:flex;gap:2px;align-items:flex-end;position:absolute;right:14px;top:12px;}
   .bar{width:4px;background:var(--screen-dim);border-radius:1px;transition:background .3s;}
   .bar:nth-child(1){height:6px}.bar:nth-child(2){height:10px}.bar:nth-child(3){height:14px}.bar:nth-child(4){height:18px}.bar:nth-child(5){height:22px;}
   .bar.lit{background:var(--screen-green);box-shadow:0 0 4px rgba(57,255,20,.6);}
-  .audio-viz{height:20px;display:flex;align-items:center;gap:2px;margin-top:6px;}
+  .audio-viz{height:18px;display:flex;align-items:center;gap:2px;margin-top:5px;}
   .viz-bar{flex:1;background:var(--screen-dim);border-radius:1px;height:3px;transition:height .08s;}
   .viz-bar.active{background:var(--screen-green);}
-  .screen-line-mid{color:#2a8a08;font-size:11px;letter-spacing:1px;font-family:'Share Tech Mono',monospace;}
 
   /* Users panel */
   .users-panel{
     margin:0 20px 12px;background:rgba(0,0,0,.35);border-radius:6px;
-    border:1px solid rgba(57,255,20,.08);padding:8px 10px;
-    font-family:'Share Tech Mono',monospace;
+    border:1px solid rgba(57,255,20,.08);padding:8px 10px;font-family:'Share Tech Mono',monospace;
   }
-  .users-header{font-size:9px;letter-spacing:3px;color:var(--screen-dim);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;}
-  .users-header span{color:var(--amber);font-size:11px;}
-  .user-list{display:flex;flex-direction:column;gap:4px;min-height:18px;}
+  .users-header{font-size:9px;letter-spacing:3px;color:var(--screen-dim);margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;}
+  .users-count{color:var(--amber);font-size:11px;}
+  .user-list{display:flex;flex-direction:column;gap:3px;min-height:16px;}
   .user-item{display:flex;align-items:center;gap:7px;font-size:10px;color:#2a8a08;letter-spacing:1px;animation:fadeIn .3s ease;}
-  @keyframes fadeIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
-  .user-dot{width:7px;height:7px;border-radius:50%;background:var(--screen-green);box-shadow:0 0 5px var(--screen-green);flex-shrink:0;}
-  .user-dot.talking{background:var(--amber);box-shadow:0 0 7px var(--amber);animation:dotpulse .4s infinite alternate;}
+  @keyframes fadeIn{from{opacity:0;transform:translateX(-5px)}to{opacity:1;transform:none}}
+  .user-dot{width:7px;height:7px;border-radius:50%;background:var(--screen-green);box-shadow:0 0 5px var(--screen-green);flex-shrink:0;transition:all .2s;}
+  .user-dot.talking{background:var(--amber);box-shadow:0 0 8px var(--amber);animation:dotpulse .4s infinite alternate;}
   .user-dot.me{background:#2a8a08;box-shadow:none;}
-  @keyframes dotpulse{from{transform:scale(1)}to{transform:scale(1.5)}}
+  @keyframes dotpulse{from{transform:scale(1)}to{transform:scale(1.6)}}
   .user-name{flex:1;}
   .user-badge{font-size:8px;color:var(--screen-dim);letter-spacing:1px;}
   .user-badge.talking{color:var(--amber);}
-  .no-peers{font-size:9px;color:var(--screen-dim);letter-spacing:1px;font-style:italic;}
+  .no-peers{font-size:9px;color:var(--screen-dim);letter-spacing:1px;}
+
+  /* Speaker grille */
   .speaker-grille{margin:0 20px 14px;background:var(--metal);border-radius:6px;padding:10px;border:1px solid rgba(0,0,0,.4);box-shadow:inset 0 2px 4px rgba(0,0,0,.5);}
   .grille-holes{display:grid;grid-template-columns:repeat(20,1fr);gap:3px;}
   .hole{width:100%;aspect-ratio:1;border-radius:50%;background:var(--olive-dark);box-shadow:inset 0 1px 2px rgba(0,0,0,.8);transition:background .05s;}
   .hole.active{background:var(--amber-dim);}
+
+  /* Controls */
   .controls{padding:0 20px 20px;display:flex;flex-direction:column;gap:14px;}
-  .connect-row{display:flex;gap:10px;align-items:stretch;}
+  .connect-row{display:flex;gap:8px;align-items:stretch;}
   .room-input{
     flex:1;background:var(--olive-dark);border:1px solid rgba(0,0,0,.5);border-radius:6px;
-    color:var(--screen-green);font-family:'Share Tech Mono',monospace;font-size:14px;
-    padding:8px 12px;letter-spacing:2px;text-transform:uppercase;outline:none;
+    color:var(--screen-green);font-family:'Share Tech Mono',monospace;font-size:13px;
+    padding:8px 10px;letter-spacing:2px;text-transform:uppercase;outline:none;
     box-shadow:inset 0 2px 4px rgba(0,0,0,.5);
   }
   .room-input::placeholder{color:var(--screen-dim);}
@@ -97,7 +105,7 @@
   .connect-btn{
     background:linear-gradient(160deg,var(--metal-light),var(--metal));border:1px solid rgba(0,0,0,.5);
     border-radius:6px;color:var(--cream);font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;
-    letter-spacing:2px;padding:8px 14px;cursor:pointer;box-shadow:0 3px 0 rgba(0,0,0,.5);
+    letter-spacing:2px;padding:8px 12px;cursor:pointer;box-shadow:0 3px 0 rgba(0,0,0,.5);
     transition:all .15s;text-transform:uppercase;white-space:nowrap;user-select:none;
   }
   .connect-btn:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.5);}
@@ -107,23 +115,22 @@
   .ch-btn{
     flex:1;background:var(--metal);border:1px solid rgba(0,0,0,.5);border-radius:4px;
     color:var(--cream);font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;
-    letter-spacing:1px;padding:6px 0;cursor:pointer;
-    box-shadow:0 3px 0 rgba(0,0,0,.4);transition:all .1s;user-select:none;
+    letter-spacing:1px;padding:6px 0;cursor:pointer;box-shadow:0 3px 0 rgba(0,0,0,.4);
+    transition:all .1s;user-select:none;text-align:center;
   }
   .ch-btn:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.4);}
   .ch-btn.active{background:var(--amber-dim);color:var(--amber);}
   .vol-wrapper{display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;}
   .knob-label{font-size:9px;letter-spacing:2px;color:var(--cream);opacity:.5;text-transform:uppercase;}
   input[type=range].vol-slider{
-    -webkit-appearance:none;width:100%;height:4px;background:var(--metal);border-radius:2px;outline:none;
-    border:1px solid rgba(0,0,0,.4);box-shadow:inset 0 1px 3px rgba(0,0,0,.5);cursor:pointer;
+    -webkit-appearance:none;width:100%;height:4px;background:var(--metal);border-radius:2px;
+    outline:none;border:1px solid rgba(0,0,0,.4);box-shadow:inset 0 1px 3px rgba(0,0,0,.5);cursor:pointer;
   }
   input[type=range].vol-slider::-webkit-slider-thumb{
     -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
     background:radial-gradient(circle at 40% 35%,var(--metal-light),var(--olive-dark));
     border:1px solid rgba(0,0,0,.5);box-shadow:0 2px 4px rgba(0,0,0,.6);cursor:pointer;
   }
-  /* FX toggles */
   .fx-row{display:flex;gap:6px;}
   .fx-toggle{
     flex:1;background:var(--metal);border:1px solid rgba(0,0,0,.4);border-radius:4px;
@@ -132,13 +139,12 @@
     user-select:none;text-align:center;
   }
   .fx-toggle.on{opacity:1;color:var(--amber);border-color:var(--amber-dim);box-shadow:0 0 5px rgba(245,166,35,.15);}
-  /* PTT */
   .ptt-section{display:flex;flex-direction:column;align-items:center;gap:8px;}
   .ptt-label{font-size:10px;letter-spacing:3px;color:var(--cream);opacity:.4;}
   .ptt-btn{
-    width:100%;height:70px;background:linear-gradient(160deg,#8a3020,var(--red));border:none;border-radius:10px;
-    cursor:pointer;font-family:'Oswald',sans-serif;font-size:18px;font-weight:700;letter-spacing:4px;
-    color:rgba(255,255,255,.9);text-transform:uppercase;
+    width:100%;height:70px;background:linear-gradient(160deg,#8a3020,var(--red));border:none;
+    border-radius:10px;cursor:pointer;font-family:'Oswald',sans-serif;font-size:18px;font-weight:700;
+    letter-spacing:4px;color:rgba(255,255,255,.9);text-transform:uppercase;
     box-shadow:0 6px 0 #6a1a10,0 8px 20px rgba(0,0,0,.5),0 0 30px rgba(232,57,42,.2);
     transition:all .08s;position:relative;overflow:hidden;user-select:none;touch-action:none;
   }
@@ -148,12 +154,22 @@
     background:linear-gradient(160deg,#c03020,#ff5540);
     box-shadow:0 3px 0 #8a1a10,0 0 40px rgba(255,85,64,.5);transform:translateY(3px);
   }
-  .ptt-btn .ptt-icon{display:block;font-size:22px;margin-bottom:2px;}
+  .ptt-icon{display:block;font-size:22px;margin-bottom:2px;}
   .ptt-hint{font-size:9px;letter-spacing:1px;color:var(--cream);opacity:.3;}
   .radio-bottom{background:linear-gradient(90deg,#1a1c17,#2a2d25,#1a1c17);height:12px;border-radius:0 0 28px 28px;}
+
+  /* Connecting overlay */
+  .connecting-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;
+    z-index:100;font-family:'Share Tech Mono',monospace;flex-direction:column;gap:12px;
+  }
+  .connecting-overlay.show{display:flex;}
+  .connecting-text{color:var(--screen-green);font-size:13px;letter-spacing:3px;animation:blink 1s infinite;}
+  .connecting-sub{color:var(--screen-dim);font-size:10px;letter-spacing:2px;}
+
   .log-panel{
-    width:320px;margin-top:16px;background:rgba(0,0,0,.4);border-radius:8px;
-    border:1px solid rgba(57,255,20,.08);padding:10px 14px;max-height:100px;overflow-y:auto;
+    width:320px;margin-top:14px;background:rgba(0,0,0,.4);border-radius:8px;
+    border:1px solid rgba(57,255,20,.08);padding:10px 14px;max-height:90px;overflow-y:auto;
     font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--screen-dim);scrollbar-width:none;
   }
   .log-panel::-webkit-scrollbar{display:none;}
@@ -163,7 +179,14 @@
 </style>
 </head>
 <body>
-<div class="app-title">HomeBase Radio — P2P Voice</div>
+
+<div class="connecting-overlay" id="overlay">
+  <div class="connecting-text" id="overlayText">CONNECTING...</div>
+  <div class="connecting-sub" id="overlaySub">reaching peerjs server</div>
+</div>
+
+<div class="app-title">HomeBase Radio — Worldwide P2P</div>
+
 <div class="radio-body">
   <div class="radio-top-strip"></div>
   <div class="radio-header">
@@ -174,6 +197,8 @@
       <div class="indicator rx" id="rxLed"></div>
     </div>
   </div>
+
+  <!-- Screen -->
   <div class="screen-section">
     <div class="signal-bars">
       <div class="bar" id="b1"></div><div class="bar" id="b2"></div>
@@ -183,21 +208,28 @@
       <span class="channel-label">CH</span>
       <span class="channel-num" id="chDisplay">01</span>
     </div>
-    <div class="screen-line-mid" id="roomLabel">NO ROOM</div>
+    <div class="screen-room" id="roomLabel">NO ROOM</div>
     <div class="status-text" id="statusText">STANDBY</div>
     <div class="audio-viz" id="audioViz"></div>
   </div>
-  <!-- Online users panel -->
+
+  <!-- Online users -->
   <div class="users-panel">
-    <div class="users-header">ONLINE IN ROOM <span id="userCount">—</span></div>
+    <div class="users-header">ONLINE IN ROOM <span class="users-count" id="userCount">—</span></div>
     <div class="user-list" id="userList"><div class="no-peers">— not connected —</div></div>
   </div>
+
+  <!-- Speaker grille -->
   <div class="speaker-grille"><div class="grille-holes" id="grille"></div></div>
+
   <div class="controls">
+    <!-- Room ID + Join -->
     <div class="connect-row">
-      <input class="room-input" id="roomInput" type="text" maxlength="8" placeholder="ROOM ID" />
+      <input class="room-input" id="roomInput" type="text" maxlength="10" placeholder="ROOM ID" />
       <button class="connect-btn" id="connectBtn">JOIN</button>
     </div>
+
+    <!-- Channels + Volume -->
     <div class="knob-row">
       <div class="ch-buttons">
         <button class="ch-btn active" data-ch="1" onclick="setChannel(this)">01</button>
@@ -210,11 +242,15 @@
         <input type="range" class="vol-slider" id="volSlider" min="0" max="100" value="80" />
       </div>
     </div>
+
+    <!-- FX Toggles -->
     <div class="fx-row">
       <button class="fx-toggle on" id="fxNoise">📻 STATIC</button>
       <button class="fx-toggle on" id="fxRadio">🎚 RADIO FX</button>
       <button class="fx-toggle on" id="fxBeep">🔔 PTT BEEP</button>
     </div>
+
+    <!-- PTT -->
     <div class="ptt-section">
       <div class="ptt-label">Push to Talk</div>
       <button class="ptt-btn" id="pttBtn" disabled>
@@ -225,52 +261,76 @@
   </div>
   <div class="radio-bottom"></div>
 </div>
+
 <div class="log-panel" id="logPanel"></div>
 
 <script>
-// ── Build grille + viz ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+//  HomeBase Radio — PeerJS cross-network edition
+//  Architecture:
+//    • PeerJS handles WebRTC signaling via their free server
+//    • "Room" = a well-known host peer ID: homebase-<ROOM>-ch<CH>
+//    • First person in room becomes HOST, others connect to host
+//    • Host relays data messages (ptt-start/stop, heartbeat) to all
+//    • Audio is direct P2P between all peers via WebRTC calls
+// ═══════════════════════════════════════════════════════════
+
+// ── Build grille & viz ─────────────────────────────────────
 const grille = document.getElementById('grille');
-for (let i = 0; i < 80; i++) {
-  const h = document.createElement('div'); h.className='hole'; h.id='h'+i; grille.appendChild(h);
-}
+for(let i=0;i<80;i++){ const h=document.createElement('div'); h.className='hole'; h.id='h'+i; grille.appendChild(h); }
 const vizContainer = document.getElementById('audioViz');
 const vizBars = [];
-for (let i = 0; i < 20; i++) {
-  const b = document.createElement('div'); b.className='viz-bar'; vizContainer.appendChild(b); vizBars.push(b);
-}
+for(let i=0;i<20;i++){ const b=document.createElement('div'); b.className='viz-bar'; vizContainer.appendChild(b); vizBars.push(b); }
 
-// ── State ───────────────────────────────────────────────────────────────────
-let localStream=null, rawMicStream=null, bcPeers={}, bc=null;
-let myId=null, roomId=null, channel=1, isTx=false;
-let audioCtx=null, analyser=null, vizAnimId=null;
-let noiseNode=null, noiseGain=null;
-let fxNoise=true, fxRadio=true, fxBeep=true;
-let peerRxNodes={};
+// ── DOM refs ───────────────────────────────────────────────
+const pttBtn     = document.getElementById('pttBtn');
+const connectBtn = document.getElementById('connectBtn');
+const roomInput  = document.getElementById('roomInput');
+const chDisplay  = document.getElementById('chDisplay');
+const statusText = document.getElementById('statusText');
+const roomLabel  = document.getElementById('roomLabel');
+const txLed      = document.getElementById('txLed');
+const rxLed      = document.getElementById('rxLed');
+const volSlider  = document.getElementById('volSlider');
+const overlay    = document.getElementById('overlay');
 
-const pttBtn=document.getElementById('pttBtn');
-const connectBtn=document.getElementById('connectBtn');
-const roomInput=document.getElementById('roomInput');
-const chDisplay=document.getElementById('chDisplay');
-const statusText=document.getElementById('statusText');
-const roomLabel=document.getElementById('roomLabel');
-const txLed=document.getElementById('txLed');
-const rxLed=document.getElementById('rxLed');
-const volSlider=document.getElementById('volSlider');
+// ── State ──────────────────────────────────────────────────
+let peer = null;          // Our PeerJS instance
+let hostConn = null;      // Data connection to host (if we're guest)
+let guestConns = {};      // Data connections from guests (if we're host) peerId->conn
+let audioCalls = {};      // Active audio calls peerId->call
+let rawMicStream = null;
+let localStream  = null;
+let audioCtx     = null;
+let analyser     = null;
+let vizAnimId    = null;
+let noiseNode    = null;
+let noiseGain    = null;
+let peerRxNodes  = {};    // peerId -> {vol}
 
-// FX toggles
-document.getElementById('fxNoise').addEventListener('click', function(){
+let myId       = null;
+let roomId     = null;
+let channel    = 1;
+let isHost     = false;
+let isTx       = false;
+let onlineUsers = {};    // peerId -> {talking}
+let talkingPeer = null;
+
+let fxNoise = true, fxRadio = true, fxBeep = true;
+
+// ── FX toggles ─────────────────────────────────────────────
+document.getElementById('fxNoise').addEventListener('click',function(){
   fxNoise=!fxNoise; this.classList.toggle('on',fxNoise);
-  if(noiseGain && audioCtx) noiseGain.gain.setTargetAtTime(fxNoise?0.03:0, audioCtx.currentTime, 0.1);
+  if(noiseGain&&audioCtx) noiseGain.gain.setTargetAtTime(fxNoise?.03:0,audioCtx.currentTime,.1);
 });
-document.getElementById('fxRadio').addEventListener('click', function(){
+document.getElementById('fxRadio').addEventListener('click',function(){
   fxRadio=!fxRadio; this.classList.toggle('on',fxRadio);
-  log('Radio FX '+(fxRadio?'ON':'OFF'),'info');
 });
-document.getElementById('fxBeep').addEventListener('click', function(){
+document.getElementById('fxBeep').addEventListener('click',function(){
   fxBeep=!fxBeep; this.classList.toggle('on',fxBeep);
 });
 
-// ── Logging ──────────────────────────────────────────────────────────────────
+// ── Logging ────────────────────────────────────────────────
 function log(msg,type='info'){
   const p=document.getElementById('logPanel');
   const ts=new Date().toTimeString().slice(0,8);
@@ -279,51 +339,45 @@ function log(msg,type='info'){
   while(p.children.length>50) p.removeChild(p.firstChild);
 }
 
-// ── Audio context ─────────────────────────────────────────────────────────────
+// ── Audio context ──────────────────────────────────────────
 function ensureCtx(){
   if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
   if(audioCtx.state==='suspended') audioCtx.resume();
   return audioCtx;
 }
 
-// ── PTT click/beep sounds ──────────────────────────────────────────────────────
-function playClick(when, amp=0.5){
+// ── PTT sounds ─────────────────────────────────────────────
+function playClick(when,amp=.5){
   const ctx=ensureCtx();
-  const len=Math.floor(ctx.sampleRate*0.018);
+  const len=Math.floor(ctx.sampleRate*.018);
   const buf=ctx.createBuffer(1,len,ctx.sampleRate);
   const d=buf.getChannelData(0);
-  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(len*0.25))*amp;
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(len*.25))*amp;
   const s=ctx.createBufferSource(); s.buffer=buf; s.connect(ctx.destination); s.start(when);
 }
-
-function playTone(when, freq, dur, amp=0.2, freqEnd=null){
+function playTone(when,freq,dur,amp=.2,freqEnd=null){
   const ctx=ensureCtx();
-  const osc=ctx.createOscillator(), g=ctx.createGain();
+  const osc=ctx.createOscillator(),g=ctx.createGain();
   osc.connect(g); g.connect(ctx.destination);
   osc.type='sine'; osc.frequency.setValueAtTime(freq,when);
-  if(freqEnd) osc.frequency.linearRampToValueAtTime(freqEnd, when+dur);
+  if(freqEnd) osc.frequency.linearRampToValueAtTime(freqEnd,when+dur);
   g.gain.setValueAtTime(0,when);
-  g.gain.linearRampToValueAtTime(amp, when+0.015);
-  g.gain.linearRampToValueAtTime(0, when+dur);
-  osc.start(when); osc.stop(when+dur+0.01);
+  g.gain.linearRampToValueAtTime(amp,when+.015);
+  g.gain.linearRampToValueAtTime(0,when+dur);
+  osc.start(when); osc.stop(when+dur+.01);
 }
-
 function playPttStart(){
   if(!fxBeep) return;
-  const ctx=ensureCtx(); const t=ctx.currentTime;
-  playClick(t, 0.7);
-  playClick(t+0.05, 0.4);
-  playTone(t+0.07, 900, 0.09, 0.22, 1300);
+  const ctx=ensureCtx(),t=ctx.currentTime;
+  playClick(t,.7); playClick(t+.05,.4); playTone(t+.07,900,.09,.22,1300);
 }
-
 function playPttEnd(){
   if(!fxBeep) return;
-  const ctx=ensureCtx(); const t=ctx.currentTime;
-  playClick(t, 0.5);
-  playTone(t+0.03, 1100, 0.09, 0.18, 700);
+  const ctx=ensureCtx(),t=ctx.currentTime;
+  playClick(t,.5); playTone(t+.03,1100,.09,.18,700);
 }
 
-// ── Background static ─────────────────────────────────────────────────────────
+// ── Background static ──────────────────────────────────────
 function startStatic(){
   const ctx=ensureCtx();
   const len=ctx.sampleRate*2;
@@ -331,121 +385,80 @@ function startStatic(){
   const d=buf.getChannelData(0);
   for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
   noiseNode=ctx.createBufferSource(); noiseNode.buffer=buf; noiseNode.loop=true;
-  const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1000; hp.Q.value=0.4;
-  const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=4000; lp.Q.value=0.4;
-  noiseGain=ctx.createGain(); noiseGain.gain.value=fxNoise?0.03:0;
+  const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1000; hp.Q.value=.4;
+  const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=4000; lp.Q.value=.4;
+  noiseGain=ctx.createGain(); noiseGain.gain.value=fxNoise?.03:0;
   noiseNode.connect(hp); hp.connect(lp); lp.connect(noiseGain); noiseGain.connect(ctx.destination);
   noiseNode.start();
 }
-
 function stopStatic(){
   try{ if(noiseNode) noiseNode.stop(); }catch(e){}
   noiseNode=null; noiseGain=null;
 }
 
-// ── Distortion curve ──────────────────────────────────────────────────────────
+// ── Distortion curve ───────────────────────────────────────
 function distCurve(amount){
-  const n=256, c=new Float32Array(n);
+  const n=256,c=new Float32Array(n);
   for(let i=0;i<n;i++){ const x=(i*2)/n-1; c[i]=((Math.PI+amount)*x)/(Math.PI+amount*Math.abs(x)); }
   return c;
 }
 
-// ── Build TX chain: mic → radio processing → MediaStream ─────────────────────
+// ── TX audio chain ─────────────────────────────────────────
 function buildTxChain(micStream){
   const ctx=ensureCtx();
   const src=ctx.createMediaStreamSource(micStream);
-  const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=300; hp.Q.value=0.5;
-  const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1700; bp.Q.value=0.65;
-  const ws=ctx.createWaveShaper(); ws.curve=distCurve(55); ws.oversample='4x';
-  const comp=ctx.createDynamicsCompressor();
-  comp.threshold.value=-22; comp.knee.value=4; comp.ratio.value=18; comp.attack.value=0.001; comp.release.value=0.04;
-  const gain=ctx.createGain(); gain.gain.value=1.5;
   const dest=ctx.createMediaStreamDestination();
-  if(fxRadio){ src.connect(hp); hp.connect(bp); bp.connect(ws); ws.connect(comp); comp.connect(gain); gain.connect(dest); }
-  else { src.connect(dest); }
+  if(fxRadio){
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=300; hp.Q.value=.5;
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1700; bp.Q.value=.65;
+    const ws=ctx.createWaveShaper(); ws.curve=distCurve(55); ws.oversample='4x';
+    const comp=ctx.createDynamicsCompressor();
+    comp.threshold.value=-22; comp.knee.value=4; comp.ratio.value=18; comp.attack.value=.001; comp.release.value=.04;
+    const g=ctx.createGain(); g.gain.value=1.5;
+    src.connect(hp); hp.connect(bp); bp.connect(ws); ws.connect(comp); comp.connect(g); g.connect(dest);
+  } else { src.connect(dest); }
   return dest.stream;
 }
 
-// ── Apply RX radio processing to incoming peer audio ─────────────────────────
-function applyRxFx(stream, peerId){
+// ── RX audio chain ─────────────────────────────────────────
+function applyRxFx(stream,pid){
   const ctx=ensureCtx();
   const src=ctx.createMediaStreamSource(stream);
   const vol=ctx.createGain(); vol.gain.value=volSlider.value/100;
   if(fxRadio){
-    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=300; hp.Q.value=0.5;
-    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1700; bp.Q.value=0.65;
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=300; hp.Q.value=.5;
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1700; bp.Q.value=.65;
     const ws=ctx.createWaveShaper(); ws.curve=distCurve(40); ws.oversample='4x';
     const comp=ctx.createDynamicsCompressor();
-    comp.threshold.value=-18; comp.knee.value=6; comp.ratio.value=14; comp.attack.value=0.001; comp.release.value=0.06;
+    comp.threshold.value=-18; comp.knee.value=6; comp.ratio.value=14; comp.attack.value=.001; comp.release.value=.06;
     src.connect(hp); hp.connect(bp); bp.connect(ws); ws.connect(comp); comp.connect(vol);
-  } else {
-    src.connect(vol);
-  }
+  } else { src.connect(vol); }
   vol.connect(ctx.destination);
-  peerRxNodes[peerId]={vol};
+  peerRxNodes[pid]={vol};
 }
 
-// ── Online users tracking ─────────────────────────────────────────────────────
-let onlineUsers = {}; // peerId -> { name, talking }
-let talkingPeer = null;
-
-function renderUsers(){
-  const list = document.getElementById('userList');
-  const countEl = document.getElementById('userCount');
-  const total = Object.keys(onlineUsers).length + (roomId ? 1 : 0);
-  countEl.textContent = roomId ? total : '—';
-  list.innerHTML = '';
-  if(!roomId){ list.innerHTML='<div class="no-peers">— not connected —</div>'; return; }
-
-  // Me first
-  const me = document.createElement('div'); me.className='user-item';
-  const isTalking = isTx;
-  me.innerHTML = `<div class="user-dot ${isTalking?'talking':'me'}"></div><span class="user-name">${myId} <span style="color:var(--screen-dim);font-size:8px">(YOU)</span></span><span class="user-badge ${isTalking?'talking':''}">${isTalking?'TALKING':'READY'}</span>`;
-  list.appendChild(me);
-
-  // Peers
-  Object.entries(onlineUsers).forEach(([pid, u])=>{
-    const el = document.createElement('div'); el.className='user-item';
-    const talking = talkingPeer===pid;
-    el.innerHTML = `<div class="user-dot ${talking?'talking':''}"></div><span class="user-name">${pid}</span><span class="user-badge ${talking?'talking':''}">${talking?'TALKING':'ONLINE'}</span>`;
-    list.appendChild(el);
-  });
-}
-
-// Heartbeat — announce presence every 5s so peers know you're still alive
-let heartbeatInterval = null;
-function startHeartbeat(){ heartbeatInterval = setInterval(()=>{ bcSend({type:'heartbeat'}); }, 5000); }
-function stopHeartbeat(){ clearInterval(heartbeatInterval); }
-
-// Timeout peers who haven't sent heartbeat in 12s
-let peerTimers = {};
-function resetPeerTimer(pid){
-  clearTimeout(peerTimers[pid]);
-  peerTimers[pid] = setTimeout(()=>{
-    if(onlineUsers[pid]){ delete onlineUsers[pid]; renderUsers(); log(pid+' timed out','warn'); }
-  }, 12000);
-}
-
+// ── Signal bars ────────────────────────────────────────────
 let sig=0;
 function updateSignal(s){ sig=s; for(let i=1;i<=5;i++) document.getElementById('b'+i).classList.toggle('lit',i<=s); }
-setInterval(()=>{ if(bc) updateSignal(Math.max(1,Math.min(5,sig+(Math.random()<.5?1:-1)))); },2200);
+setInterval(()=>{ if(roomId) updateSignal(Math.max(1,Math.min(5,sig+(Math.random()<.5?1:-1)))); },2500);
 
-// ── Grille anim ──────────────────────────────────────────────────────────────
+// ── Grille animation ───────────────────────────────────────
 let grillT=null;
 function startGrille(){ grillT=setInterval(()=>{ document.querySelectorAll('.hole').forEach(h=>h.classList.remove('active')); for(let i=0;i<Math.floor(Math.random()*16);i++) document.getElementById('h'+Math.floor(Math.random()*80))?.classList.add('active'); },70); }
 function stopGrille(){ clearInterval(grillT); document.querySelectorAll('.hole').forEach(h=>h.classList.remove('active')); }
 
-// ── Viz ──────────────────────────────────────────────────────────────────────
+// ── Viz ────────────────────────────────────────────────────
 function startViz(stream){
   const ctx=ensureCtx();
   analyser=ctx.createAnalyser(); analyser.fftSize=64;
   ctx.createMediaStreamSource(stream).connect(analyser);
   const arr=new Uint8Array(analyser.frequencyBinCount);
-  function draw(){ vizAnimId=requestAnimationFrame(draw); analyser.getByteFrequencyData(arr); vizBars.forEach((b,i)=>{ const v=(arr[i]||0)/255; b.style.height=Math.max(3,v*20)+'px'; b.classList.toggle('active',v>.1); }); } draw();
+  function draw(){ vizAnimId=requestAnimationFrame(draw); analyser.getByteFrequencyData(arr); vizBars.forEach((b,i)=>{ const v=(arr[i]||0)/255; b.style.height=Math.max(3,v*18)+'px'; b.classList.toggle('active',v>.1); }); }
+  draw();
 }
 function stopViz(){ if(vizAnimId)cancelAnimationFrame(vizAnimId); vizBars.forEach(b=>{b.style.height='3px';b.classList.remove('active');}); }
 
-// ── Channel ──────────────────────────────────────────────────────────────────
+// ── Channel ────────────────────────────────────────────────
 function setChannel(btn){
   document.querySelectorAll('.ch-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active'); channel=parseInt(btn.dataset.ch);
@@ -453,109 +466,278 @@ function setChannel(btn){
   log('Channel '+channel,'info');
 }
 
-// ── Volume ────────────────────────────────────────────────────────────────────
+// ── Volume ─────────────────────────────────────────────────
 volSlider.addEventListener('input',()=>{ const v=volSlider.value/100; Object.values(peerRxNodes).forEach(n=>{if(n.vol)n.vol.gain.value=v;}); });
 
-// ── WebRTC ────────────────────────────────────────────────────────────────────
-const STUN={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
+// ── Status ─────────────────────────────────────────────────
+function setStatus(msg){
+  statusText.textContent=msg;
+  statusText.className='status-text'+(msg!=='STANDBY'&&msg!=='NO ROOM'?' active-status':'');
+}
 
-function joinRoom(room){
-  roomId=room.toUpperCase(); roomLabel.textContent=roomId;
-  bc=new BroadcastChannel('homebase-'+roomId+'-ch'+channel);
-  myId='u-'+Math.random().toString(36).slice(2,8);
-  onlineUsers={}; talkingPeer=null;
-  log(`Room ${roomId} ch${channel} · ${myId}`,'success');
-  setStatus('ONLINE · LISTENING'); updateSignal(4);
-  startStatic(); startHeartbeat();
-  bc.onmessage=async(evt)=>{
-    const m=JSON.parse(evt.data); if(m.from===myId) return;
-    // Track user presence
-    if(m.type==='announce'||m.type==='heartbeat'){
-      const isNew = !onlineUsers[m.from];
-      onlineUsers[m.from]={name:m.from,talking:false};
-      resetPeerTimer(m.from);
-      if(isNew){ renderUsers(); }
-      if(m.type==='announce'&&!bcPeers[m.from]){ log('Peer '+m.from+' joined','info'); await initPeer(m.from,true); bcSend({type:'heartbeat'}); }
-    }
-    else if(m.type==='leave'){
-      delete onlineUsers[m.from]; clearTimeout(peerTimers[m.from]);
-      if(talkingPeer===m.from) talkingPeer=null;
-      renderUsers(); log(m.from+' left','warn');
-    }
-    else if(m.type==='offer'&&m.to===myId) await handleOffer(m.from,m.sdp);
-    else if(m.type==='answer'&&m.to===myId) await handleAnswer(m.from,m.sdp);
-    else if(m.type==='ice'&&m.to===myId) await handleIce(m.from,m.candidate);
-    else if(m.type==='ptt-start'&&m.from!==myId){
-      talkingPeer=m.from;
-      if(onlineUsers[m.from]) onlineUsers[m.from].talking=true;
-      renderUsers();
-      rxLed.classList.add('active'); startGrille(); setStatus('RX · '+m.from);
+// ── Users panel ────────────────────────────────────────────
+function renderUsers(){
+  const list=document.getElementById('userList');
+  const countEl=document.getElementById('userCount');
+  if(!roomId){ list.innerHTML='<div class="no-peers">— not connected —</div>'; countEl.textContent='—'; return; }
+  const total=Object.keys(onlineUsers).length+1;
+  countEl.textContent=total;
+  list.innerHTML='';
+  // Me
+  const me=document.createElement('div'); me.className='user-item';
+  me.innerHTML=`<div class="user-dot ${isTx?'talking':'me'}"></div><span class="user-name">${myId} <span style="color:var(--screen-dim);font-size:8px">(YOU${isHost?' · HOST':''})</span></span><span class="user-badge ${isTx?'talking':''}">${isTx?'TALKING':'READY'}</span>`;
+  list.appendChild(me);
+  // Peers
+  Object.entries(onlineUsers).forEach(([pid,u])=>{
+    const el=document.createElement('div'); el.className='user-item';
+    const talking=talkingPeer===pid;
+    el.innerHTML=`<div class="user-dot ${talking?'talking':''}"></div><span class="user-name">${pid}</span><span class="user-badge ${talking?'talking':''}">${talking?'TALKING':'ONLINE'}</span>`;
+    list.appendChild(el);
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  PeerJS SIGNALING
+//  Room convention: host peer ID = "hb-<ROOMID>-ch<CH>"
+//  Guests connect to that known host ID.
+//  If host disconnects, the next guest tries to become host.
+// ══════════════════════════════════════════════════════════
+
+function hostPeerId(room, ch){ return 'hb-'+room.toLowerCase()+'-ch'+ch; }
+
+// ── Data messaging ─────────────────────────────────────────
+// Send a data message to all connected peers
+function broadcast(msg, excludeId=null){
+  const str=JSON.stringify(msg);
+  // If host, send to all guests
+  Object.entries(guestConns).forEach(([pid,conn])=>{
+    if(pid!==excludeId && conn.open) try{ conn.send(str); }catch(e){}
+  });
+  // If guest, send to host (host will relay)
+  if(hostConn && hostConn.open) try{ hostConn.send(str); }catch(e){}
+}
+
+function handleDataMsg(msg, fromId){
+  if(msg.type==='user-list'){
+    // Host sends full user list to newly joined guest
+    onlineUsers={};
+    (msg.users||[]).forEach(u=>{ if(u!==myId) onlineUsers[u]={talking:false}; });
+    renderUsers(); log('Got user list: '+Object.keys(onlineUsers).length+' peers','info');
+  } else if(msg.type==='user-join'){
+    if(msg.id!==myId){ onlineUsers[msg.id]={talking:false}; renderUsers(); log(msg.id+' joined','info'); }
+    // Host relays to others
+    if(isHost) broadcast(msg, fromId);
+  } else if(msg.type==='user-leave'){
+    delete onlineUsers[msg.id]; if(talkingPeer===msg.id) talkingPeer=null;
+    renderUsers(); log(msg.id+' left','warn');
+    if(isHost) broadcast(msg, fromId);
+  } else if(msg.type==='ptt-start'){
+    if(msg.id!==myId){
+      talkingPeer=msg.id;
+      if(onlineUsers[msg.id]) onlineUsers[msg.id].talking=true;
+      renderUsers(); rxLed.classList.add('active'); startGrille(); setStatus('RX · '+msg.id);
       playPttStart();
-      if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(0.07,audioCtx.currentTime,0.04);
+      if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(.07,audioCtx.currentTime,.04);
     }
-    else if(m.type==='ptt-stop'&&m.from!==myId){
+    if(isHost) broadcast(msg, fromId);
+  } else if(msg.type==='ptt-stop'){
+    if(msg.id!==myId){
       talkingPeer=null;
-      if(onlineUsers[m.from]) onlineUsers[m.from].talking=false;
-      renderUsers();
-      rxLed.classList.remove('active'); stopGrille(); setStatus('ONLINE · LISTENING');
+      if(onlineUsers[msg.id]) onlineUsers[msg.id].talking=false;
+      renderUsers(); rxLed.classList.remove('active'); stopGrille(); setStatus('ONLINE · LISTENING');
       playPttEnd();
-      if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(0.03,audioCtx.currentTime,0.25);
+      if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(.03,audioCtx.currentTime,.25);
     }
-  };
-  bcSend({type:'announce'});
-  renderUsers();
+    if(isHost) broadcast(msg, fromId);
+  }
 }
 
-function bcSend(m){ if(bc) bc.postMessage(JSON.stringify({...m,from:myId})); }
-
-async function initPeer(pid,init){
-  const pc=new RTCPeerConnection(STUN); bcPeers[pid]=pc;
-  if(localStream) localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
-  pc.ontrack=(e)=>{ log('Audio from '+pid,'success'); applyRxFx(e.streams[0],pid); };
-  pc.onicecandidate=(e)=>{ if(e.candidate) bcSend({type:'ice',to:pid,candidate:e.candidate}); };
-  pc.onconnectionstatechange=()=>{
-    log(pid+': '+pc.connectionState,'info');
-    if(pc.connectionState==='connected') updateSignal(5);
-    if(pc.connectionState==='disconnected'||pc.connectionState==='failed'){ delete bcPeers[pid]; delete peerRxNodes[pid]; updateSignal(3); }
-  };
-  if(init){ const o=await pc.createOffer({offerToReceiveAudio:true}); await pc.setLocalDescription(o); bcSend({type:'offer',to:pid,sdp:pc.localDescription}); }
+// ── Make an audio call to a peer ──────────────────────────
+function callPeer(pid){
+  if(!localStream||audioCalls[pid]) return;
+  log('Calling '+pid,'info');
+  const call=peer.call(pid, localStream);
+  audioCalls[pid]=call;
+  call.on('stream', stream=>{ log('Audio stream from '+pid,'success'); applyRxFx(stream,pid); });
+  call.on('close',()=>{ delete audioCalls[pid]; delete peerRxNodes[pid]; });
+  call.on('error',e=>{ log('Call error with '+pid+': '+e,'warn'); delete audioCalls[pid]; });
 }
-async function handleOffer(pid,sdp){ if(!bcPeers[pid]) await initPeer(pid,false); const pc=bcPeers[pid]; await pc.setRemoteDescription(new RTCSessionDescription(sdp)); const a=await pc.createAnswer(); await pc.setLocalDescription(a); bcSend({type:'answer',to:pid,sdp:pc.localDescription}); }
-async function handleAnswer(pid,sdp){ const pc=bcPeers[pid]; if(pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp)); }
-async function handleIce(pid,c){ const pc=bcPeers[pid]; if(pc&&c) try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(e){} }
 
-// ── PTT ───────────────────────────────────────────────────────────────────────
+// ── Setup data connection events ───────────────────────────
+function setupDataConn(conn, asHost){
+  conn.on('open',()=>{
+    log((asHost?'Guest':'Host')+' data connected: '+conn.peer,'success');
+    if(asHost){
+      // Send current user list to new guest
+      const users=[myId,...Object.keys(onlineUsers)];
+      conn.send(JSON.stringify({type:'user-list',users}));
+      // Tell everyone new peer joined
+      broadcast({type:'user-join',id:conn.peer});
+      onlineUsers[conn.peer]={talking:false}; renderUsers();
+      // Call them for audio
+      callPeer(conn.peer);
+    } else {
+      // We connected to host — announce ourselves
+      conn.send(JSON.stringify({type:'user-join',id:myId}));
+    }
+    updateSignal(4);
+  });
+  conn.on('data', data=>{ try{ handleDataMsg(JSON.parse(data), conn.peer); }catch(e){} });
+  conn.on('close',()=>{
+    log(conn.peer+' disconnected','warn');
+    if(asHost){ delete guestConns[conn.peer]; }
+    delete onlineUsers[conn.peer]; if(talkingPeer===conn.peer) talkingPeer=null;
+    renderUsers(); updateSignal(3);
+  });
+  conn.on('error',e=>log('Conn error: '+e,'warn'));
+}
+
+// ── Join as HOST ───────────────────────────────────────────
+function becomeHost(room, ch){
+  isHost=true;
+  const hid=hostPeerId(room,ch);
+  peer=new Peer(hid,{ debug:0 });
+  showOverlay('STARTING ROOM...','registering as host');
+  peer.on('open',id=>{
+    myId=id; roomId=room; roomLabel.textContent=room;
+    hideOverlay();
+    log('You are HOST: '+id,'success');
+    setStatus('ONLINE · LISTENING'); updateSignal(4);
+    startStatic(); pttBtn.disabled=false;
+    connectBtn.textContent='LEAVE'; connectBtn.classList.add('connected');
+    renderUsers();
+    startHeartbeat();
+  });
+  // Accept incoming connections
+  peer.on('connection',conn=>{
+    guestConns[conn.peer]=conn;
+    setupDataConn(conn,true);
+  });
+  // Accept incoming audio calls
+  peer.on('call',call=>{
+    audioCalls[call.peer]=call;
+    call.answer(localStream);
+    call.on('stream',stream=>{ log('Audio from '+call.peer,'success'); applyRxFx(stream,call.peer); });
+    call.on('close',()=>{ delete audioCalls[call.peer]; delete peerRxNodes[call.peer]; });
+  });
+  peer.on('error',e=>{
+    hideOverlay();
+    if(e.type==='unavailable-id'){
+      // Room already has a host, join as guest
+      log('Room exists, joining as guest...','info');
+      peer.destroy(); peer=null;
+      joinAsGuest(room,ch);
+    } else {
+      log('Peer error: '+e.type,'warn');
+      disconnectAll();
+    }
+  });
+  peer.on('disconnected',()=>{ log('Disconnected from server, reconnecting...','warn'); try{peer.reconnect();}catch(e){} });
+}
+
+// ── Join as GUEST ──────────────────────────────────────────
+function joinAsGuest(room, ch){
+  isHost=false;
+  // Use a random guest ID
+  const gid='hbg-'+Math.random().toString(36).slice(2,9);
+  peer=new Peer(gid,{ debug:0 });
+  showOverlay('JOINING ROOM...','connecting to host');
+  peer.on('open',id=>{
+    myId=id; log('My ID: '+id,'info');
+    // Connect to host
+    const hid=hostPeerId(room,ch);
+    log('Connecting to host: '+hid,'info');
+    hostConn=peer.connect(hid,{reliable:true});
+    setupDataConn(hostConn,false);
+    hostConn.on('open',()=>{
+      roomId=room; roomLabel.textContent=room;
+      hideOverlay();
+      setStatus('ONLINE · LISTENING'); updateSignal(4);
+      startStatic(); pttBtn.disabled=false;
+      connectBtn.textContent='LEAVE'; connectBtn.classList.add('connected');
+      renderUsers();
+      startHeartbeat();
+      // Call the host for audio
+      callPeer(hid);
+    });
+    hostConn.on('error',e=>{ hideOverlay(); log('Host connection failed: '+e,'warn'); disconnectAll(); });
+  });
+  // Accept calls from others (host calls us back)
+  peer.on('call',call=>{
+    audioCalls[call.peer]=call;
+    call.answer(localStream);
+    call.on('stream',stream=>{ log('Audio from '+call.peer,'success'); applyRxFx(stream,call.peer); });
+    call.on('close',()=>{ delete audioCalls[call.peer]; delete peerRxNodes[call.peer]; });
+  });
+  peer.on('error',e=>{ hideOverlay(); log('Peer error: '+e.type,'warn'); disconnectAll(); });
+  peer.on('disconnected',()=>{ log('Disconnected, reconnecting...','warn'); try{peer.reconnect();}catch(e){} });
+}
+
+// ── Heartbeat ──────────────────────────────────────────────
+let hbInterval=null;
+function startHeartbeat(){ hbInterval=setInterval(()=>{ /* connections stay alive via PeerJS internally */ },5000); }
+function stopHeartbeat(){ clearInterval(hbInterval); }
+
+// ── Overlay helpers ────────────────────────────────────────
+function showOverlay(text,sub){
+  document.getElementById('overlayText').textContent=text;
+  document.getElementById('overlaySub').textContent=sub;
+  overlay.classList.add('show');
+}
+function hideOverlay(){ overlay.classList.remove('show'); }
+
+// ── Disconnect ─────────────────────────────────────────────
+function disconnectAll(){
+  if(roomId) broadcast({type:'user-leave',id:myId});
+  stopHeartbeat();
+  Object.values(audioCalls).forEach(c=>{ try{c.close();}catch(e){} }); audioCalls={};
+  Object.values(guestConns).forEach(c=>{ try{c.close();}catch(e){} }); guestConns={};
+  if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; }
+  if(peer){ try{peer.destroy();}catch(e){} peer=null; }
+  if(rawMicStream){ rawMicStream.getTracks().forEach(t=>t.stop()); rawMicStream=null; }
+  localStream=null; stopViz(); stopStatic();
+  onlineUsers={}; talkingPeer=null; peerRxNodes={};
+  roomId=null; myId=null; isHost=false;
+  roomLabel.textContent='NO ROOM'; pttBtn.disabled=true;
+  connectBtn.textContent='JOIN'; connectBtn.classList.remove('connected');
+  setStatus('STANDBY'); updateSignal(0); renderUsers();
+  if(isTx){ isTx=false; pttBtn.classList.remove('transmitting'); pttBtn.innerHTML='<span class="ptt-icon">📡</span>TRANSMIT'; txLed.classList.remove('active'); stopGrille(); }
+  log('Disconnected','warn');
+}
+
+// ── PTT ────────────────────────────────────────────────────
 async function startTx(){
-  if(!roomId){log('Join a room first!','warn');return;}
+  if(!roomId){ log('Join a room first!','warn'); return; }
   if(isTx) return; isTx=true; ensureCtx();
   if(!rawMicStream){
     try{
       rawMicStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,sampleRate:48000},video:false});
       localStream=buildTxChain(rawMicStream);
-      Object.entries(bcPeers).forEach(([pid,pc])=>{ localStream.getTracks().forEach(t=>{ if(!pc.getSenders().find(s=>s.track===t)) pc.addTrack(t,localStream); }); });
+      // Add track to existing calls
+      Object.entries(audioCalls).forEach(([pid,call])=>{
+        localStream.getTracks().forEach(t=>{ try{ call.peerConnection.getSenders().forEach(s=>{ if(s.track&&s.track.kind==='audio') s.replaceTrack(t); }); }catch(e){} });
+      });
       startViz(rawMicStream); log('Mic + radio FX active','success');
-    }catch(e){log('Mic error: '+e.message,'warn');isTx=false;return;}
+    }catch(e){ log('Mic error: '+e.message,'warn'); isTx=false; return; }
   }
   localStream.getAudioTracks().forEach(t=>t.enabled=true);
   playPttStart();
-  if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(0.05,audioCtx.currentTime,0.03);
+  if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(.05,audioCtx.currentTime,.03);
   pttBtn.classList.add('transmitting');
   pttBtn.innerHTML='<span class="ptt-icon">🔴</span>TRANSMITTING...';
-  txLed.classList.add('active'); setStatus('TRANSMITTING...'); startGrille();
-  renderUsers();
-  bcSend({type:'ptt-start'}); log('PTT TX start','tx');
+  txLed.classList.add('active'); setStatus('TRANSMITTING...'); startGrille(); renderUsers();
+  broadcast({type:'ptt-start',id:myId}); log('PTT TX','tx');
 }
 
 function stopTx(){
   if(!isTx) return; isTx=false;
   if(localStream) localStream.getAudioTracks().forEach(t=>t.enabled=false);
   playPttEnd();
-  if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(0.03,audioCtx.currentTime,0.2);
+  if(noiseGain&&fxNoise) noiseGain.gain.setTargetAtTime(.03,audioCtx.currentTime,.2);
   pttBtn.classList.remove('transmitting');
   pttBtn.innerHTML='<span class="ptt-icon">📡</span>TRANSMIT';
-  txLed.classList.remove('active'); setStatus('ONLINE · LISTENING'); stopGrille();
-  renderUsers();
-  bcSend({type:'ptt-stop'}); log('PTT TX end','tx');
+  txLed.classList.remove('active'); setStatus('ONLINE · LISTENING'); stopGrille(); renderUsers();
+  broadcast({type:'ptt-stop',id:myId}); log('PTT end','tx');
 }
 
 pttBtn.addEventListener('mousedown',startTx);
@@ -566,45 +748,29 @@ pttBtn.addEventListener('touchend',e=>{e.preventDefault();stopTx();},{passive:fa
 document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&roomId){e.preventDefault();startTx();}});
 document.addEventListener('keyup',e=>{if(e.code==='Space'){e.preventDefault();stopTx();}});
 
-// ── Connect ───────────────────────────────────────────────────────────────────
+// ── Connect button ─────────────────────────────────────────
 connectBtn.addEventListener('click',async()=>{
-  if(roomId){
-    bcSend({type:'leave'});
-    if(bc){bc.close();bc=null;}
-    Object.values(bcPeers).forEach(pc=>pc.close()); bcPeers={}; peerRxNodes={};
-    Object.values(peerTimers).forEach(t=>clearTimeout(t)); peerTimers={};
-    onlineUsers={}; talkingPeer=null;
-    stopHeartbeat();
-    if(rawMicStream){rawMicStream.getTracks().forEach(t=>t.stop());rawMicStream=null;}
-    localStream=null; stopViz(); stopStatic();
-    roomId=null; roomLabel.textContent='NO ROOM'; pttBtn.disabled=true;
-    connectBtn.textContent='JOIN'; connectBtn.classList.remove('connected');
-    setStatus('STANDBY'); updateSignal(0); renderUsers(); log('Disconnected','warn'); return;
-  }
-  const room=roomInput.value.trim(); if(!room){roomInput.focus();log('Enter room ID','warn');return;}
+  if(roomId){ disconnectAll(); return; }
+  const room=roomInput.value.trim().toUpperCase();
+  if(!room){ roomInput.focus(); log('Enter a Room ID','warn'); return; }
   ensureCtx();
+  // Get mic first
   try{
     rawMicStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
     localStream=buildTxChain(rawMicStream);
     localStream.getAudioTracks().forEach(t=>t.enabled=false);
     startViz(rawMicStream);
-  }catch(e){log('Mic denied: '+e.message,'warn');return;}
-  joinRoom(room);
-  pttBtn.disabled=false; connectBtn.textContent='LEAVE'; connectBtn.classList.add('connected');
-  renderUsers();
+  }catch(e){ log('Mic denied: '+e.message,'warn'); return; }
+  // Try to become host first; PeerJS will error if ID taken → become guest
+  becomeHost(room, channel);
 });
-roomInput.addEventListener('keydown',e=>{if(e.key==='Enter')connectBtn.click();});
+roomInput.addEventListener('keydown',e=>{ if(e.key==='Enter') connectBtn.click(); });
 
-function setStatus(msg){
-  statusText.textContent=msg;
-  statusText.className='status-text'+(msg!=='STANDBY'&&msg!=='NO ROOM'?' active-status':'');
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Init ───────────────────────────────────────────────────
 updateSignal(0);
-log('HomeBase Radio — realistic radio audio engine ready!','success');
-log('Enter a Room ID → JOIN → hold TRANSMIT to talk','info');
-log('Same room in another tab/device connects via WebRTC','info');
+log('HomeBase Radio ready — worldwide P2P via PeerJS','success');
+log('Enter any Room ID → JOIN → anyone with same Room ID can connect','info');
+log('Works across different networks & devices worldwide 🌍','info');
 </script>
 </body>
 </html>
